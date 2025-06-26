@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - port: "3000:3000"
+    environment:
+      - MONGO_URI=mongodb://mongodb:password@mongodb:27017/job_processor
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your_jwt_secret
+      - ADMIN_PASSWORD=your_admin_password
+    depends_on:
+      - mongodb
+      - redis:
+  mongodb:
+    image: mongodb:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+  redis:
+    image: redis:latest
+    volumes:
+      - redis_data:/data
+volumes:
+  mongodb_data:
+  redis_data:
