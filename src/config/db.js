@@ -2,63 +2,80 @@ import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 import { config } from './index.js';
 
-export async function connectDB() {
+export const connectDB = async (retryCount = 0, maxRetries = 5) => {
   try {
-    const dbName = 'J';
-    const dbUri = `${config.mongoUri?.replace(/\/\w+$/, '') || 'Not In List'}/${dbName}`; // Fallback to 'not set'
+    logger.info('🚀 Attempting MongoDB connection', {
+      uri: config.mongoUri.replace(/:[^@]+@/, ':***@'),
+      retryCount,
+    });
 
-    const mongooseOptions = {
-      dbName,
-      autoIndex: true,
-      connectTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 30000,
-      heartbeatFrequencyMS: 10000,
-    };
+    await mongoose.connect(config.mongoUri, {
+      connectTimeoutMS: 15000, // Increased timeout
+      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 30000,
+      retryWrites: true,
+      w: 'majority',
+      ssl: true, // Explicit SSL for Atlas
+      serverApi: { version: '1', strict: true, deprecationErrors: true },
+    });
 
-    await mongoose.connect(dbUri, mongooseOptions);
+    logger.info('✅ MongoDB connected successfully', {
+      uri: config.mongoUri.replace(/:[^@]+@/, ':***@'),
+      connectionName: mongoose.connection.name,
+    });
 
-    logger.info(
-      `✅ Successfully connected to MongoDB - Database: ${dbName}, URI: ${config.mongoUri ? 'Present' : 'Not In List'}`,
-    );
+    mongoose.connection.on('error', (err) => {
+      logger.error('❌ MongoDB connection error', {
+        error: err.message,
+        code: err.code || 'UNKNOWN',
+        stack: err.stack,
+      });
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      logger.warn('⚠️ MongoDB disconnected');
+    });
+
+    return mongoose.connection;
   } catch (error) {
-    logger.error(`❌ Failed to connect to MongoDB: ${error.message}`);
-    logger.warn(`🔄 Attempting to reconnect to MongoDB in 5 seconds...`);
-    setTimeout(connectDB, 5000); // Retry after 5 seconds
+    logger.error('❌ MongoDB connection failed', {
+      error: error.message,
+      code: error.code || 'UNKNOWN',
+      stack: error.stack,
+      retryCount,
+      uri: config.mongoUri.replace(/:[^@]+@/, ':***@'),
+    });
+
+    if (retryCount < maxRetries) {
+      logger.info(`🔄 Retrying MongoDB connection (${retryCount + 1}/${maxRetries})...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return connectDB(retryCount + 1, maxRetries);
+    }
+
+    throw new Error('MongoDB connection timed out');
   }
-}
+};
 
-// Event listeners for connection monitoring
-mongoose.connection.on('connected', () => {
-  logger.info(`✅ MongoDB connection established`);
+export const disconnectDB = async () => {
+  try {
+    await mongoose.disconnect();
+    logger.info('🔌 MongoDB disconnected successfully');
+  } catch (error) {
+    logger.error('❌ MongoDB disconnection failed', {
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+};
+
+process.on('SIGINT', async () => {
+  await disconnectDB();
+  logger.info('🔌 Application shutdown: SIGINT');
+  process.exit(0);
 });
 
-mongoose.connection.on('error', (err) => {
-  logger.error(`⚠️ MongoDB connection error: ${err.message}`);
+process.on('SIGTERM', async () => {
+  await disconnectDB();
+  logger.info('🔌 Application shutdown: SIGTERM');
+  process.exit(0);
 });
-
-mongoose.connection.on('disconnected', () => {
-  logger.warn(`🔌 MongoDB connection lost. Native reconnection will attempt to restore.`);
-});
-
-mongoose.connection.on('reconnect', () => {
-  logger.info(`🔄 MongoDB successfully reconnected`);
-});
-
-mongoose.connection.on('close', () => {
-  logger.error(`❌ MongoDB connection closed unexpectedly. Check server status.`);
-  logger.warn(`🔄 Scheduling manual reconnect attempt in 5 seconds...`);
-  setTimeout(connectDB, 5000);
-});
-
-// Global error handlers to prevent crashes
-process.on('uncaughtException', (error) => {
-  logger.error(`⚠️ Uncaught Exception: ${error.message}`, { stack: error.stack });
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error(`⚠️ Unhandled Rejection at: ${promise}, reason: ${reason.message || reason}`);
-});
-
-export default connectDB;
