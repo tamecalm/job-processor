@@ -6,9 +6,10 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
 import jobRoutes from './api/routes/jobRoutes.js';
-import  connectDatabase  from './config/db.js';
+import { connectDB } from './config/db.js';
 import { connectRedis } from './config/redis.js';
-import { jobQueue } from './jobs/queue.js';
+import { createJobQueue } from './jobs/queue.js';
+import { createEmailWorker } from './jobs/workers/emailWorker.js';
 import { authMiddleware } from './api/middlewares/auth.js';
 import { errorHandler } from './api/middlewares/errorHandler.js';
 import { rateLimiter } from './api/middlewares/rateLimiter.js';
@@ -27,13 +28,16 @@ app.use('/api/login', rateLimiter);
 app.use('/api/jobs', rateLimiter);
 
 // Connect to MongoDB and Redis
-connectDatabase();
-connectRedis();
+await connectDB();
+await connectRedis();
+const jobQueue = createJobQueue(); // Initialize queue after Redis connection
+createEmailWorker(); // Initialize the worker
+
 
 // Bull Board Dashboard
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/dashboard');
-const { addQueue, setQueues, replaceQueues, createBullBoardHandler } = createBullBoard({
+createBullBoard({
   queues: [new BullMQAdapter(jobQueue)],
   serverAdapter,
 });

@@ -4,26 +4,25 @@ services:
   app:
     build: .
     ports:
-      - port: "3000:3000"
+      - "3000:3000"
     environment:
-      - MONGO_URI=mongodb://mongodb:password@mongodb:27017/job_processor
-      - REDIS_URL=redis://redis:6379
+      - MONGO_URI=
+      - REDIS_URI=
+      - REDIS_USERNAME=default
+      - REDIS_PASSWORD=
+      - REDIS_HOST=
+      - REDIS_PORT=16422
       - JWT_SECRET=your_jwt_secret
       - ADMIN_PASSWORD=your_admin_password
+      - NODE_ENV=production
     depends_on:
       - mongodb
-      - redis:
   mongodb:
-    image: mongodb:latest
+    image: mongo:latest
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: password
     volumes:
       - mongodb_data:/data/db
-  redis:
-    image: redis:latest
-    volumes:
-      - redis_data:/data
 volumes:
   mongodb_data:
-  redis_data:
