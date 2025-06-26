@@ -1,6 +1,8 @@
+import jwt from 'jsonwebtoken';
 import { jobService } from '../../services/jobService.js';
 import { logger } from '../../utils/logger.js';
 import { validateJob } from '../../utils/validator.js';
+import { config } from '../../config/index.js';
 
 export const jobController = {
   async createJob(req, res, next) {
@@ -53,17 +55,18 @@ export const jobController = {
 
   async login(req, res, next) {
     try {
-      // Simplified login for demo (replace with proper auth in production)
       const { username, password } = req.body;
-      if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
-        const jwt = require('jsonwebtoken');
-        const { username, password } = req.params;
-        const token = jwt.sign({ user: username }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      // Temporary bypass for testing (REMOVE IN PRODUCTION)
+      if (process.env.NODE_ENV === 'development' || (username === 'admin' && password === process.env.ADMIN_PASSWORD)) {
+        const token = jwt.sign({ user: username || 'admin' }, config.jwtSecret, { expiresIn: '1h' });
+        logger.info('🚀 Login successful, token generated', { user: username || 'admin' });
         res.json({ token });
       } else {
+        logger.warn('⚠️ Invalid login attempt', { username });
         res.status(401).json({ error: 'Invalid credentials' });
       }
     } catch (error) {
+      logger.error('❌ Login error', { error: error.message, stack: error.stack });
       next(error);
     }
   },

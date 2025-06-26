@@ -15,69 +15,68 @@ import { errorHandler } from './api/middlewares/errorHandler.js';
 import { createRateLimiter } from './api/middlewares/rateLimiter.js';
 import { logger } from './utils/logger.js';
 
-// Load environment variables
 dotenv.config();
 
-// Initialize Express app
 const app = express();
 
-// Apply security and middleware
+// Basic middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// Timeout wrappers for debugging long hangs
+const withTimeout = (promise, timeout, label) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), timeout)
+    ),
+  ]);
+};
+
 async function startServer() {
   try {
-    // Step 1: Connect to Redis
-    logger.info('🚀 Starting Redis connection...');
+    console.log('🚀 Step 1: Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
     try {
-      await connectRedis();
+      await withTimeout(connectRedis(), 5000, 'Redis connection');
       redisConnected = true;
-      logger.info('✅ Redis connected successfully');
+      console.log('✅ Redis connected successfully');
     } catch (redisError) {
-      logger.warn('⚠️ Redis connection failed, running in degraded mode', {
-        error: redisError.message,
-        code: redisError.code || 'UNKNOWN',
-        stack: redisError.stack,
-        endpoint: redisError.endpoint || 'unknown',
-        opensslVersion: process.versions.openssl,
-      });
+      console.warn('⚠️ Redis connection failed:', redisError.message);
     }
 
-    // Step 2: Connect to MongoDB
-    logger.info('🚀 Connecting to MongoDB...');
-    await connectDB();
-    logger.info('✅ MongoDB connected successfully');
+    console.log('🚀 Step 2: Connecting to MongoDB...');
+    try {
+      await withTimeout(connectDB(), 5000, 'MongoDB connection');
+      console.log('✅ MongoDB connected successfully');
+    } catch (mongoError) {
+      console.error('❌ MongoDB connection failed:', mongoError.message);
+      throw mongoError;
+    }
 
-    // Step 3: Initialize rate limiter
-    logger.info('🚀 Initializing rate limiter...');
+    console.log('🚀 Step 3: Initializing rate limiter...');
     const rateLimiter = createRateLimiter({ points: 100, duration: 3600 });
-    app.use('/api/login', rateLimiter);
+    // app.use('/api/login', rateLimiter);
     app.use('/api/jobs', rateLimiter);
-    logger.info('✅ Rate limiter initialized');
+    console.log('✅ Rate limiter initialized');
 
-    // Step 4: Initialize job queue and worker
     if (redisConnected) {
-      logger.info('🚀 Initializing job queue and worker...');
+      console.log('🚀 Step 4: Initializing job queue and worker...');
       try {
         jobQueue = createJobQueue();
         createEmailWorker();
-        logger.info('✅ Job queue and worker initialized');
+        console.log('✅ Job queue and worker initialized');
       } catch (queueError) {
-        logger.warn('⚠️ Failed to initialize job queue, Bull Board disabled', {
-          error: queueError.message,
-          stack: queueError.stack,
-        });
+        console.warn('⚠️ Failed to initialize job queue:', queueError.message);
       }
     } else {
-      logger.warn('⚠️ Job queue and worker skipped due to Redis failure');
+      console.warn('⚠️ Skipping job queue due to Redis failure');
     }
 
-    // Step 5: Setup Bull Board dashboard (if Redis is connected)
     if (redisConnected && jobQueue) {
-      logger.info('🚀 Setting up Bull Board dashboard...');
+      console.log('🚀 Step 5: Setting up Bull Board dashboard...');
       const serverAdapter = new ExpressAdapter();
       serverAdapter.setBasePath('/dashboard');
       createBullBoard({
@@ -85,18 +84,16 @@ async function startServer() {
         serverAdapter,
       });
       app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
-      logger.info('✅ Bull Board dashboard enabled at /dashboard');
+      console.log('✅ Bull Board dashboard enabled at /dashboard');
     } else {
-      logger.warn('⚠️ Bull Board dashboard disabled due to Redis connection failure');
+      console.warn('⚠️ Bull Board disabled due to Redis issue');
     }
 
-    // Step 6: Setup routes and error handler
-    logger.info('🚀 Setting up API routes...');
+    console.log('🚀 Step 6: Registering API routes...');
     app.use('/api', jobRoutes);
     app.use(errorHandler);
-    logger.info('✅ API routes configured');
+    console.log('✅ API routes configured');
 
-    // Step 7: Health check endpoint
     app.get('/health', (req, res) => {
       const memoryUsage = process.memoryUsage();
       const uptime = process.uptime();
@@ -111,31 +108,18 @@ async function startServer() {
       });
     });
 
-    // Step 8: Start the server
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      logger.info(`✅ Server running on port ${PORT}`);
+      console.log(`✅ Server running on port ${PORT}`);
     });
   } catch (error) {
-    logger.error('❌ Failed to start server', {
-      error: error.message,
-      code: error.code || 'UNKNOWN',
-      stack: error.stack,
-      opensslVersion: process.versions.openssl,
-    });
+    console.error('❌ Failed to start server:', error.message);
     process.exit(1);
   }
 }
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('❌ Unhandled Promise Rejection', {
-    reason: reason.message || String(reason),
-    stack: reason.stack || 'No stack trace',
-    promise,
-    opensslVersion: process.versions.openssl,
-  });
+  console.error('❌ Unhandled Promise Rejection:', reason);
 });
 
-// Start the server
 startServer();

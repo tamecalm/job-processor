@@ -4,7 +4,7 @@ import { getRedisClient } from '../../config/redis.js';
 
 export const createRateLimiter = (options = {}) => {
   const {
-    points = 100,
+    points = 10000,
     duration = 3600,
     blockDuration = 3600,
     keyPrefix = 'rate-limit',
