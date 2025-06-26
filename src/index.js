@@ -1,14 +1,12 @@
 import express from 'express';
-import mongoose from 'mongoose';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter.js';
 import { ExpressAdapter } from '@bull-board/express';
 import dotenv from 'dotenv';
-import winston from 'winston';
 import cors from 'cors';
 import helmet from 'helmet';
 import jobRoutes from './api/routes/jobRoutes.js';
-import { connectDB } from './config/db.js';
+import  connectDatabase  from './config/db.js';
 import { connectRedis } from './config/redis.js';
 import { jobQueue } from './jobs/queue.js';
 import { authMiddleware } from './api/middlewares/auth.js';
@@ -29,7 +27,7 @@ app.use('/api/login', rateLimiter);
 app.use('/api/jobs', rateLimiter);
 
 // Connect to MongoDB and Redis
-connectDB();
+connectDatabase();
 connectRedis();
 
 // Bull Board Dashboard

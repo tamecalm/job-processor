@@ -11,3 +11,5 @@ logs/
 .idea/
 # .vscode directory
 .vscode/
+# Combined Log Files
+*combined.log
