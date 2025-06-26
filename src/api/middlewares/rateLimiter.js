@@ -1,18 +1,59 @@
-import rateLimit from 'express-rate-limit';
+import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { logger } from '../../utils/logger.js';
+import { getRedisClient } from '../../config/redis.js';
 
-export const rateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  handler: (req, res, next, options) => {
-  logger.warn(`Rate limit exceeded for IP ${req.ip}`, {
-    endpoint: req.originalUrl,
-    method: req.method,
-  });
-  res.status(options.statusCode).json({
-    error: options.message,
-    retryAfter: Math.ceil(options.windowMs / 1000), // Seconds until reset
-  });
-},
-});
+export const createRateLimiter = (options = {}) => {
+  const {
+    points = 100,
+    duration = 3600,
+    blockDuration = 3600,
+    keyPrefix = 'rate-limit',
+  } = options;
+
+  let rateLimiter;
+
+  const redisClient = getRedisClient();
+
+  try {
+    if (redisClient) {
+      logger.info('🚀 Creating Redis-based rate limiter');
+      rateLimiter = new RateLimiterRedis({
+        storeClient: redisClient,
+        points,
+        duration,
+        blockDuration,
+        keyPrefix,
+      });
+    } else {
+      logger.warn('⚠️ Redis client not available, using memory store');
+      rateLimiter = new RateLimiterMemory({
+        points,
+        duration,
+        blockDuration,
+        keyPrefix,
+      });
+    }
+  } catch (err) {
+    logger.error('❌ Failed to initialize rate limiter', {
+      error: err.message,
+      stack: err.stack,
+    });
+    throw err;
+  }
+
+  // Return Express middleware
+  return (req, res, next) => {
+    const key = req.ip;
+
+    rateLimiter.consume(key)
+      .then(() => {
+        next();
+      })
+      .catch(() => {
+        res.status(429).json({
+          success: false,
+          message: 'Too many requests. Please try again later.',
+        });
+      });
+  };
+};

@@ -25,7 +25,7 @@ export async function connectDB() {
   } catch (error) {
     logger.error(`❌ Failed to connect to MongoDB: ${error.message}`);
     logger.warn(`🔄 Attempting to reconnect to MongoDB in 5 seconds...`);
-    setTimeout(connectDatabase, 5000); // Retry after 5 seconds
+    setTimeout(connectDB, 5000); // Retry after 5 seconds
   }
 }
 
@@ -49,7 +49,7 @@ mongoose.connection.on('reconnect', () => {
 mongoose.connection.on('close', () => {
   logger.error(`❌ MongoDB connection closed unexpectedly. Check server status.`);
   logger.warn(`🔄 Scheduling manual reconnect attempt in 5 seconds...`);
-  setTimeout(connectDatabase, 5000);
+  setTimeout(connectDB, 5000);
 });
 
 // Global error handlers to prevent crashes
