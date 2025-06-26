@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 import { config } from './index.js';
 
-export async function connectDatabase() {
+export async function connectDB() {
   try {
     const dbName = 'J';
     const dbUri = `${config.mongoUri?.replace(/\/\w+$/, '') || 'Not In List'}/${dbName}`; // Fallback to 'not set'
@@ -61,4 +61,4 @@ process.on('unhandledRejection', (reason, promise) => {
   logger.error(`⚠️ Unhandled Rejection at: ${promise}, reason: ${reason.message || reason}`);
 });
 
-export default connectDatabase;
+export default connectDB;

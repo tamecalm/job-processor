@@ -28,42 +28,51 @@ app.use('/api/login', rateLimiter);
 app.use('/api/jobs', rateLimiter);
 
 // Connect to MongoDB and Redis
-await connectDB();
-await connectRedis();
-const jobQueue = createJobQueue(); // Initialize queue after Redis connection
-createEmailWorker(); // Initialize the worker
+const startServer = async () => {
+  try {
+    // Connect to MongoDB and Redis
+    await connectDB();
+    await connectRedis();
+    const jobQueue = createJobQueue();
+    createEmailWorker();
 
+    // Bull Board Dashboard
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/dashboard');
+    createBullBoard({
+      queues: [new BullMQAdapter(jobQueue)],
+      serverAdapter,
+    });
+    app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
 
-// Bull Board Dashboard
-const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/dashboard');
-createBullBoard({
-  queues: [new BullMQAdapter(jobQueue)],
-  serverAdapter,
-});
-app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
+    // Health check endpoint
+    app.get('/health', (req, res) => {
+      const memoryUsage = process.memoryUsage();
+      const uptime = process.uptime();
+      res.json({
+        status: 'OK',
+        uptime: `${Math.floor(uptime / 60)} minutes`,
+        memoryUsage: {
+          heapUsed: `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+          heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+        },
+      });
+    });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  const memoryUsage = process.memoryUsage();
-  const uptime = process.uptime();
-  res.json({
-    status: 'OK',
-    uptime: `${Math.floor(uptime / 60)} minutes`,
-    memoryUsage: {
-      heapUsed: `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
-      heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
-    },
-  });
-});
+    // API routes
+    app.use('/api', jobRoutes);
 
-// API routes
-app.use('/api', jobRoutes);
+    // Error handling
+    app.use(errorHandler);
 
-// Error handling
-app.use(errorHandler);
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', { error: error.message, stack: error.stack });
+    process.exit(1);
+  }
+};
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
+startServer();
