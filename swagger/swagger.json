@@ -2,23 +2,52 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Job Processor API",
-    "version": "1.0.0"
+    "description": "A production-ready background job processing system with BullMQ, Redis, and MongoDB",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@jobprocessor.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
   },
+  "servers": [
+    {
+      "url": "http://localhost:3000/api",
+      "description": "Development server"
+    },
+    {
+      "url": "https://your-production-domain.com/api",
+      "description": "Production server"
+    }
+  ],
   "paths": {
     "/login": {
       "post": {
-        "summary": "Login to get JWT token",
+        "summary": "Authenticate user and get JWT token",
+        "description": "Login with admin credentials to receive a JWT token for API access",
+        "tags": ["Authentication"],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["username", "password"],
                 "properties": {
-                  "username": { "type": "string" },
-                  "password": { "type": "string" }
-                },
-                "requiredrequired": ["username", "password"]
+                  "username": {
+                    "type": "string",
+                    "example": "admin",
+                    "description": "Admin username"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "your-admin-password",
+                    "description": "Admin password from environment variables"
+                  }
+                }
               }
             }
           }
@@ -30,18 +59,35 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                    "properties": {
-                      "token": "string" }
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "JWT token for API authentication",
+                      "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     }
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           }
         }
-      },
+      }
+    },
     "/jobs": {
       "post": {
-        "summary": "Submit new job",
+        "summary": "Create a new background job",
+        "description": "Submit a new job to the processing queue",
+        "tags": ["Jobs"],
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -49,15 +95,33 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name", "data"],
                 "properties": {
-                  "name": { "type": "string", "example": "sendEmail" },
+                  "name": {
+                    "type": "string",
+                    "enum": ["sendEmail"],
+                    "example": "sendEmail",
+                    "description": "Type of job to process"
+                  },
                   "data": {
                     "type": "object",
-                      "properties": {
-                        "email": { "type": "string" },
-                        "content": { "type": "string" }
+                    "required": ["recipient", "subject"],
+                    "properties": {
+                      "recipient": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "user@example.com",
+                        "description": "Email recipient address"
+                      },
+                      "subject": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "example": "Welcome to our service!",
+                        "description": "Email subject line"
                       }
-                    }
+                    },
+                    "description": "Job-specific data payload"
                   }
                 }
               }
@@ -66,11 +130,31 @@
         },
         "responses": {
           "201": {
-            "description": "Job created",
+            "description": "Job created successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid job data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -79,10 +163,36 @@
       },
       "get": {
         "summary": "List all jobs",
+        "description": "Retrieve all jobs with their current status and metadata",
+        "tags": ["Jobs"],
         "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter jobs by status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["active", "completed", "failed"]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of jobs to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List of jobs",
+            "description": "List of jobs retrieved successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -93,26 +203,42 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
-      },
+      }
+    },
     "/jobs/{id}": {
       "get": {
         "summary": "Get job by ID",
+        "description": "Retrieve detailed information about a specific job",
+        "tags": ["Jobs"],
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Job ID (MongoDB ObjectId)",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$",
+              "example": "507f1f77bcf86cd799439011"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Job details",
+            "description": "Job details retrieved successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -120,29 +246,74 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
-        "summary": "Cancel job",
+        "summary": "Cancel and delete job",
+        "description": "Remove a job from the queue and delete its record",
+        "tags": ["Jobs"],
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Job ID (MongoDB ObjectId)",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$",
+              "example": "507f1f77bcf86cd799439011"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Job deleted",
+            "description": "Job deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -153,24 +324,59 @@
     "/jobs/{id}/retry": {
       "post": {
         "summary": "Retry failed job",
+        "description": "Retry a job that has failed processing",
+        "tags": ["Jobs"],
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Job ID (MongoDB ObjectId)",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$",
+              "example": "507f1f77bcf86cd799439011"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Job retried",
+            "description": "Job retry initiated successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Job is not in failed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -180,25 +386,101 @@
     }
   },
   "components": {
-    "Job": {
-      "type": "object",
-      "properties": {
-        "_id": { "type": "string" },
-        "name": { "type": "string" },
-        "data": { "type": "object" },
-        "status": { "type": "string", "enum": ["active", "completed", "failed"] },
-        "result": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "completedAt": { "type": "string", "format": "date-time" },
-        "failedAt": { "type": "string", "failed": "date-time" }
+    "schemas": {
+      "Job": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "Unique job identifier",
+            "example": "507f1f77bcf86cd799439011"
+          },
+          "name": {
+            "type": "string",
+            "description": "Job type/name",
+            "example": "sendEmail"
+          },
+          "data": {
+            "type": "object",
+            "description": "Job payload data",
+            "properties": {
+              "recipient": {
+                "type": "string",
+                "format": "email",
+                "example": "user@example.com"
+              },
+              "subject": {
+                "type": "string",
+                "example": "Welcome Email"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "completed", "failed"],
+            "description": "Current job status",
+            "example": "completed"
+          },
+          "result": {
+            "type": "string",
+            "description": "Job execution result or error message",
+            "example": "Email sent successfully to user@example.com"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Job creation timestamp",
+            "example": "2024-01-15T10:30:00.000Z"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Job completion timestamp",
+            "example": "2024-01-15T10:31:00.000Z"
+          },
+          "failedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Job failure timestamp",
+            "example": "2024-01-15T10:31:00.000Z"
+          }
+        },
+        "required": ["_id", "name", "data", "status", "createdAt"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message",
+            "example": "Invalid credentials"
+          },
+          "statusCode": {
+            "type": "integer",
+            "description": "HTTP status code",
+            "example": 401
+          }
+        },
+        "required": ["error"]
       }
     },
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearer": "JWT bearerFormat"
+        "bearerFormat": "JWT",
+        "description": "JWT token obtained from /login endpoint"
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "User authentication endpoints"
+    },
+    {
+      "name": "Jobs",
+      "description": "Job management and processing endpoints"
+    }
+  ]
 }
