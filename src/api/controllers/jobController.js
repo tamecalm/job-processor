@@ -5,6 +5,12 @@ import { validateJob } from '../../utils/validator.js';
 import { config } from '../../config/index.js';
 
 export const jobController = {
+  /**
+   * Creates a new job with the provided name and data
+   * @param {Object} req - Express request object containing job data in body
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
   async createJob(req, res, next) {
     try {
       const { error } = validateJob(req.body);
@@ -16,6 +22,12 @@ export const jobController = {
     }
   },
 
+  /**
+   * Retrieves all jobs from the database
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
   async getJobs(req, res, next) {
     try {
       const jobs = await jobService.getJobs();
@@ -25,6 +37,12 @@ export const jobController = {
     }
   },
 
+  /**
+   * Retrieves a specific job by ID
+   * @param {Object} req - Express request object containing job ID in params
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
   async getJobById(req, res, next) {
     try {
       const job = await jobService.getJobById(req.params.id);
@@ -35,6 +53,12 @@ export const jobController = {
     }
   },
 
+  /**
+   * Deletes a job by ID
+   * @param {Object} req - Express request object containing job ID in params
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
   async deleteJob(req, res, next) {
     try {
       const job = await jobService.deleteJob(req.params.id);
@@ -44,6 +68,12 @@ export const jobController = {
     }
   },
 
+  /**
+   * Retries a failed job by ID
+   * @param {Object} req - Express request object containing job ID in params
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
   async retryJob(req, res, next) {
     try {
       const job = await jobService.retryJob(req.params.id);
@@ -53,6 +83,13 @@ export const jobController = {
     }
   },
 
+  /**
+   * Authenticates user and generates JWT token (TEMPORARY TEST IMPLEMENTATION)
+   * @param {Object} req - Express request object containing username/password in body
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   * @note Remove the development bypass before production deployment
+   */
   async login(req, res, next) {
     try {
       const { username, password } = req.body;

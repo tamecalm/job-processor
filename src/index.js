@@ -61,7 +61,6 @@ async function startServer() {
      // If you're testing locally, consider temporarily disabling rate limiting in development environments.
     // eslint-disable-next-line no-unused-vars
     const rateLimiter = createRateLimiter({ points: 60, duration: 60 });
-    // app.use('/api/login', rateLimiter);
     // app.use('/api/jobs', rateLimiter);
     logger.success('Rate limiter initialized');
 
