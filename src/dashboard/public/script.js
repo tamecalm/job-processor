@@ -1,3 +1,5 @@
+/* eslint-disable no-undef */
+/* eslint-disable no-unused-vars */
 const token = localStorage.getItem('token');
 if (!token) {
   window.location.href = '/auth.html';
