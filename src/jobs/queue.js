@@ -21,7 +21,7 @@ export const createJobQueue = () => {
       tls: config.redisUri.startsWith('rediss://') ? {} : undefined,
       retryDelayOnFailover: 100,
       enableReadyCheck: false,
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: null, // Fix BullMQ warning
       lazyConnect: true,
       connectTimeout: 30000,
       commandTimeout: 30000,
