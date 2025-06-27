@@ -3,6 +3,7 @@ export default {
   transform: {
     '^.+\\.js$': 'babel-jest'
   },
+  transformIgnorePatterns: ['/node_modules/(?!winston)/'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   testMatch: [
     '<rootDir>/tests/**/*.test.js',
