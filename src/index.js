@@ -36,44 +36,56 @@ const withTimeout = (promise, timeout, label) => {
 
 async function startServer() {
   try {
-    logger.warn('🚀 Step 1: Starting Redis connection...');
+    logger.info('🚀 Step 1: Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
+    
     try {
       await withTimeout(connectRedis(), 15000, 'Redis connection');
       redisConnected = true;
-      logger.warn('✅ Redis connected successfully');
+      logger.info('✅ Redis connected successfully');
     } catch (redisError) {
-      logger.warn('⚠️ Redis connection failed:', { error: redisError.message });
+      logger.error('❌ Redis connection failed:', { error: redisError.message });
     }
 
-    logger.warn('🚀 Step 2: Connecting to MongoDB...');
+    logger.info('🚀 Step 2: Connecting to MongoDB...');
     try {
       await withTimeout(connectDB(), 10000, 'MongoDB connection');
-      logger.warn('✅ MongoDB connected successfully');
+      logger.info('✅ MongoDB connected successfully');
     } catch (mongoError) {
-      logger.warn('⚠️ MongoDB connection failed:', { error: mongoError.message });
+      logger.error('❌ MongoDB connection failed:', { error: mongoError.message });
       throw mongoError;
     }
 
-    logger.warn('🚀 Step 3: Initializing rate limiter...');
+    logger.info('🚀 Step 3: Initializing rate limiter...');
     const rateLimiter = createRateLimiter({ points: 100, duration: 3600 });
     // app.use('/api', rateLimiter);
-    logger.warn('✅ Rate limiter initialized');
+    logger.info('✅ Rate limiter initialized');
 
     if (redisConnected) {
-      logger.warn('🚀 Step 4: Initializing job queue and worker...');
+      logger.info('🚀 Step 4: Initializing job queue and worker...');
       try {
+        // Initialize job queue
         jobQueue = createJobQueue();
         if (jobQueue) {
-          createEmailWorker();
-          logger.warn('✅ Job queue and worker initialized');
+          logger.info('✅ Job queue initialized');
+          
+          // Initialize worker
+          const worker = createEmailWorker();
+          if (worker) {
+            logger.info('✅ Email worker initialized');
+          } else {
+            logger.warn('⚠️ Email worker initialization failed');
+          }
         } else {
           logger.warn('⚠️ Job queue initialization failed, skipping worker');
           redisConnected = false;
         }
       } catch (queueError) {
-        logger.warn('⚠️ Failed to initialize job queue or worker:', { error: queueError.message });
+        logger.error('❌ Failed to initialize job queue or worker:', { 
+          error: queueError.message,
+          stack: queueError.stack 
+        });
         redisConnected = false;
       }
     } else {
@@ -81,7 +93,7 @@ async function startServer() {
     }
 
     if (redisConnected && jobQueue) {
-      logger.warn('🚀 Step 5: Setting up Bull Board dashboard...');
+      logger.info('🚀 Step 5: Setting up Bull Board dashboard...');
       try {
         const serverAdapter = new ExpressAdapter();
         serverAdapter.setBasePath('/dashboard');
@@ -90,19 +102,23 @@ async function startServer() {
           serverAdapter,
         });
         app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
-        logger.warn('✅ Bull Board dashboard enabled at /dashboard');
+        logger.info('✅ Bull Board dashboard enabled at /dashboard');
       } catch (bullBoardError) {
-        logger.warn('⚠️ Failed to set up Bull Board:', { error: bullBoardError.message });
+        logger.error('❌ Failed to set up Bull Board:', { 
+          error: bullBoardError.message,
+          stack: bullBoardError.stack 
+        });
       }
     } else {
       logger.warn('⚠️ Bull Board disabled due to Redis or queue issue');
     }
 
-    logger.warn('🚀 Step 6: Registering API routes...');
+    logger.info('🚀 Step 6: Registering API routes...');
     app.use('/api', jobRoutes);
     app.use(errorHandler);
-    logger.warn('✅ API routes configured');
+    logger.info('✅ API routes configured');
 
+    // Health check endpoint
     app.get('/health', (req, res) => {
       const memoryUsage = process.memoryUsage();
       const uptime = process.uptime();
@@ -114,21 +130,53 @@ async function startServer() {
           heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
         },
         redis: getRedisClient() ? 'Connected' : 'Disconnected',
+        queue: jobQueue ? 'Initialized' : 'Not Available',
       });
     });
 
+    // Serve static files for dashboard
+    app.use(express.static('src/dashboard/public'));
+
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      logger.warn(`✅ Server running on port ${PORT}`);
+      logger.info(`✅ Server running on port ${PORT}`);
+      logger.info(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+      logger.info(`🔍 Health Check: http://localhost:${PORT}/health`);
     });
+
   } catch (error) {
-    logger.warn('⚠️ Failed to start server:', { error: error.message });
+    logger.error('❌ Failed to start server:', { 
+      error: error.message,
+      stack: error.stack 
+    });
     process.exit(1);
   }
 }
 
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  logger.info('🔄 Received SIGINT, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  logger.info('🔄 Received SIGTERM, shutting down gracefully...');
+  process.exit(0);
+});
+
 process.on('unhandledRejection', (reason, promise) => {
-  logger.warn('⚠️ Unhandled Promise Rejection:', { reason });
+  logger.error('❌ Unhandled Promise Rejection:', { 
+    reason: reason?.message || reason,
+    stack: reason?.stack 
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('❌ Uncaught Exception:', { 
+    error: error.message,
+    stack: error.stack 
+  });
+  process.exit(1);
 });
 
 startServer();
