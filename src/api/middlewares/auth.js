@@ -11,10 +11,16 @@ export const authMiddleware = (req, res, next) => {
     try {
       const decoded = jwt.verify(token, config.jwtSecret);
       req.user = decoded;
-      logger.info('🚀 JWT authentication successful', { user: decoded.user });
+      logger.debug('JWT authentication successful', { 
+        userId: decoded.user?.id || decoded.id || 'unknown',
+        method: 'JWT'
+      });
       return next();
     } catch (error) {
-      logger.error('❌ Invalid JWT token', { error: error.message });
+      logger.warn('JWT authentication failed', { 
+        error: error.message,
+        tokenSource: authHeader ? 'header' : 'query'
+      });
       return res.status(401).json({ error: 'Invalid token' });
     }
   }
@@ -27,14 +33,28 @@ export const authMiddleware = (req, res, next) => {
 
     if (username === 'admin' && (password === 'admin' || password === process.env.ADMIN_PASSWORD)) {
       req.user = { user: username };
-      logger.info('🚀 Basic Auth successful', { user: username });
+      logger.debug('Basic authentication successful', { 
+        user: username,
+        method: 'Basic'
+      });
       return next();
     } else {
-      logger.error('❌ Invalid Basic Auth credentials');
-      res.status(401).set('WWW-Authenticate', 'Basic realm="Bull Dashboard"').json({ error: 'Invalid credentials' });
+      logger.warn('Basic authentication failed', { 
+        username: username || 'missing',
+        reason: 'invalid_credentials'
+      });
+      return res.status(401)
+        .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
+        .json({ error: 'Invalid credentials' });
     }
   }
 
-  logger.warn('⚠️ No valid authentication provided');
-  res.status(401).set('WWW-Authenticate', 'Basic realm="Bull Dashboard"').json({ error: 'Access denied. No token or credentials provided.' });
+  logger.debug('Authentication required - no credentials provided', {
+    userAgent: req.get('User-Agent')?.substring(0, 50) || 'unknown',
+    ip: req.ip || req.connection.remoteAddress || 'unknown'
+  });
+  
+  return res.status(401)
+    .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
+    .json({ error: 'Access denied. No token or credentials provided.' });
 };

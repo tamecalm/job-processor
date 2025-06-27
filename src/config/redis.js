@@ -6,7 +6,7 @@ let redisClient = null;
 
 export const connectRedis = async () => {
   if (redisClient?.isOpen) {
-    logger.warn('🔄 Redis client already connected');
+    // logger.debug('Redis client already connected');
     return redisClient;
   }
 
@@ -21,47 +21,48 @@ export const connectRedis = async () => {
       },
     });
 
+    // Event handlers for Redis client
     redisClient.on('error', (err) => {
-      logger.warn('⚠️ Redis Client Error', {
+      logger.error('Redis client error', {
         error: err.message,
         code: err.code,
-        stack: err.stack,
         endpoint: config.redisUri.replace(/:[^@]+@/, ':***@'),
       });
     });
 
     redisClient.on('connect', () => {
-      logger.warn('🔗 Redis client connected');
+      // logger.debug('Redis client connected');
     });
 
     redisClient.on('ready', () => {
-      logger.warn('✅ Redis client ready');
+      // logger.debug('Redis client ready');
     });
 
     redisClient.on('end', () => {
-      logger.warn('🔌 Redis client disconnected');
+      logger.debug('Redis client disconnected');
     });
 
     await redisClient.connect();
-    logger.warn(`✅ Redis connected successfully to ${config.redisUri.replace(/:[^@]+@/, ':***@')}`);
 
+    // Test connection in non-production environments
     if (config.environment !== 'production') {
       await redisClient.set('test_key', 'test_value', { EX: 60 });
       const testValue = await redisClient.get('test_key');
       if (testValue === 'test_value') {
-        logger.warn('✅ Redis connection test successful');
+        logger.debug('Redis connection test successful');
       } else {
-        logger.warn('⚠️ Redis connection test failed: unexpected value');
+        logger.warn('Redis connection test failed - unexpected value');
       }
     }
 
     return redisClient;
   } catch (error) {
-    logger.warn('⚠️ Redis connection failed', {
+    logger.error('Redis connection failed', {
       error: error.message,
       code: error.code || 'UNKNOWN',
-      stack: error.stack,
+      endpoint: config.redisUri.replace(/:[^@]+@/, ':***@'),
     });
+    
     if (redisClient) {
       await redisClient.quit().catch(() => {});
       redisClient = null;
@@ -72,7 +73,7 @@ export const connectRedis = async () => {
 
 export const getRedisClient = () => {
   if (!redisClient || !redisClient.isOpen) {
-    logger.warn('⚠️ Redis client not initialized or not connected');
+    logger.debug('Redis client not initialized or not connected');
     return null;
   }
   return redisClient;
@@ -81,7 +82,7 @@ export const getRedisClient = () => {
 export const disconnectRedis = async () => {
   if (redisClient?.isOpen) {
     await redisClient.quit().catch(() => {});
-    logger.warn('🔌 Redis client gracefully disconnected');
+    logger.info('Redis client gracefully disconnected');
   }
   redisClient = null;
 };

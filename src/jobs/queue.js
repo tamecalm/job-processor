@@ -8,6 +8,7 @@ let queueEvents = null;
 export const createJobQueue = () => {
   // Return existing queue if already created
   if (jobQueue) {
+    logger.debug('Job queue already exists, returning existing instance');
     return jobQueue;
   }
 
@@ -21,17 +22,13 @@ export const createJobQueue = () => {
       tls: config.redisUri.startsWith('rediss://') ? {} : undefined,
       retryDelayOnFailover: 100,
       enableReadyCheck: false,
-      maxRetriesPerRequest: null, // Fix BullMQ warning
+      maxRetriesPerRequest: null,
       lazyConnect: true,
       connectTimeout: 30000,
       commandTimeout: 30000,
     };
 
-    logger.info('🚀 Creating BullMQ queue with Redis config', {
-      host: redisConfig.host,
-      port: redisConfig.port,
-      tls: !!redisConfig.tls,
-    });
+    logger.debug('Creating BullMQ queue');
 
     jobQueue = new Queue('jobs', {
       connection: redisConfig,
@@ -46,30 +43,45 @@ export const createJobQueue = () => {
       },
     });
 
-    // Create queue events
+    // Create queue events with minimal logging
     queueEvents = new QueueEvents('jobs', { 
       connection: redisConfig 
     });
 
+    // Only log important job events
     queueEvents.on('completed', ({ jobId }) => {
-      logger.info(`✅ Job ${jobId} completed`);
+      logger.debug(`Job completed`, { jobId });
     });
 
     queueEvents.on('failed', ({ jobId, failedReason }) => {
-      logger.error(`❌ Job ${jobId} failed: ${failedReason}`);
+      logger.warn(`Job failed`, { 
+        jobId, 
+        reason: failedReason?.substring(0, 200) || 'Unknown error' // Limit error message length
+      });
     });
 
+    // Only log progress for long-running jobs (optional)
     queueEvents.on('progress', ({ jobId, data }) => {
-      logger.info(`🔄 Job ${jobId} progress: ${JSON.stringify(data)}`);
+      if (data && typeof data === 'object' && data.percentage) {
+        logger.debug(`Job progress`, { 
+          jobId, 
+          progress: data.percentage 
+        });
+      }
     });
 
-    logger.info('✅ Job queue and events initialized successfully');
+    // Log stalled jobs (important for monitoring)
+    queueEvents.on('stalled', ({ jobId }) => {
+      logger.warn(`Job stalled`, { jobId });
+    });
+
+    logger.debug('Job queue and events initialized');
     return jobQueue;
 
   } catch (error) {
-    logger.error('❌ Failed to create job queue', {
+    logger.error('Failed to create job queue', {
       error: error.message,
-      stack: error.stack,
+      code: error.code || 'UNKNOWN',
     });
     jobQueue = null;
     return null;
@@ -77,6 +89,9 @@ export const createJobQueue = () => {
 };
 
 export const getJobQueue = () => {
+  if (!jobQueue) {
+    logger.debug('Job queue not initialized');
+  }
   return jobQueue;
 };
 
@@ -85,16 +100,72 @@ export const closeQueue = async () => {
     if (queueEvents) {
       await queueEvents.close();
       queueEvents = null;
+      logger.debug('Queue events closed');
     }
     if (jobQueue) {
       await jobQueue.close();
       jobQueue = null;
+      logger.debug('Job queue closed');
     }
-    logger.info('🔌 Job queue closed successfully');
+    logger.info('Job queue closed successfully');
   } catch (error) {
-    logger.error('❌ Error closing job queue', {
+    logger.error('Error closing job queue', {
       error: error.message,
-      stack: error.stack,
     });
+  }
+};
+
+// Helper function to add jobs with logging
+export const addJob = async (jobName, jobData, options = {}) => {
+  try {
+    if (!jobQueue) {
+      throw new Error('Job queue not initialized');
+    }
+    
+    const job = await jobQueue.add(jobName, jobData, options);
+    logger.debug('Job added to queue', { 
+      jobId: job.id, 
+      jobName,
+      priority: options.priority || 'normal'
+    });
+    
+    return job;
+  } catch (error) {
+    logger.error('Failed to add job to queue', {
+      jobName,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+// Helper function to get queue stats
+export const getQueueStats = async () => {
+  try {
+    if (!jobQueue) {
+      return null;
+    }
+    
+    const [waiting, active, completed, failed] = await Promise.all([
+      jobQueue.getWaiting(),
+      jobQueue.getActive(),
+      jobQueue.getCompleted(),
+      jobQueue.getFailed(),
+    ]);
+    
+    const stats = {
+      waiting: waiting.length,
+      active: active.length,
+      completed: completed.length,
+      failed: failed.length,
+    };
+    
+    logger.debug('Queue stats retrieved', stats);
+    return stats;
+  } catch (error) {
+    logger.error('Failed to get queue stats', {
+      error: error.message,
+    });
+    return null;
   }
 };
