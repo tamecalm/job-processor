@@ -1,9 +1,13 @@
 import winston from 'winston';
 import path from 'path';
-import { fileURLToPath } from 'url';
+// import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ESM __dirname alternative (commented out for reference)
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
+
+// Use process.cwd() as an alternative base path
+const logFilePath = path.join(process.cwd(), '/logs/combined.log');
 
 // Custom format for clean, readable logs
 const customFormat = winston.format.combine(
@@ -16,17 +20,16 @@ const customFormat = winston.format.combine(
       debug: '\x1b[35m',   // Magenta
       reset: '\x1b[0m'     // Reset
     };
-    
+
     const color = levelColors[level] || levelColors.reset;
     const reset = levelColors.reset;
-    
+
     let logMessage = `${color}[${timestamp}] ${level.toUpperCase()}${reset}: ${message}`;
-    
-    // Add metadata if present
+
     if (Object.keys(meta).length > 0) {
       logMessage += `\n  ${JSON.stringify(meta, null, 2)}`;
     }
-    
+
     return logMessage;
   })
 );
@@ -47,13 +50,9 @@ const fileFormat = winston.format.combine(
 const logger = winston.createLogger({
   level: 'debug',
   transports: [
-    // Console transport with colors
-    new winston.transports.Console({
-      format: customFormat
-    }),
-    // File transport for persistent logging
+    new winston.transports.Console({ format: customFormat }),
     new winston.transports.File({
-      filename: path.join(__dirname, '../combined.log'),
+      filename: logFilePath,
       format: fileFormat,
       maxsize: 10 * 1024 * 1024, // 10MB
       maxFiles: 5
