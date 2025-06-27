@@ -59,7 +59,7 @@ async function startServer() {
     console.log('🚀 Step 3: Initializing rate limiter...');
     const rateLimiter = createRateLimiter({ points: 100, duration: 3600 });
     // app.use('/api/login', rateLimiter);
-    app.use('/api/jobs', rateLimiter);
+    // app.use('/api/jobs', rateLimiter);
     console.log('✅ Rate limiter initialized');
 
     if (redisConnected) {

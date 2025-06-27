@@ -3,18 +3,19 @@ import Job from '../../models/job.model.js';
 
 export const emailProcessor = async (job) => {
   try {
+    logger.info('🚀 Processing email job', { jobId: job.id, recipient: job.data.recipient });
     // Simulate email sending
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    logger.info(`Processed email job ${job.id} for ${job.data.email}`);
+    logger.info(`Processed email job ${job.id} for ${job.data.recipient}`);
 
     // Update job status in MongoDB
     await Job.findByIdAndUpdate(job.id, {
       status: 'completed',
-      result: `Email sent to ${job.data.email}`,
+      result: `Email sent to ${job.data.recipient}`,
       completedAt: new Date(),
     });
 
-    return { status: 'success', result: `Email sent to ${job.data.email}` };
+    return { status: 'success', result: `Email sent to ${job.data.recipient}` };
   } catch (error) {
     logger.error(`Email job ${job.id} failed: ${error.message}`);
     await Job.findByIdAndUpdate(job.id, {

@@ -8,7 +8,7 @@ const jobSchema = new mongoose.Schema({
     enum: ['active', 'completed', 'failed'],
     default: 'active',
   },
-  result: { type: String },
+  result: { type: mongoose.Mixed }, // Allow string or object
   createdAt: { type: Date, default: Date.now },
   completedAt: { type: Date },
   failedAt: { type: Date },

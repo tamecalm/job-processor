@@ -1,9 +1,13 @@
 import Joi from 'joi';
 
-export const validateJob = Joi.object({
-  name: Joi.string().valid('send-email').required(),
-  data: Joi.object({
-    email: Joi.string().email().required(),
-    content: Joi.string().required(),
-  }).required(),
-});
+export const validateJob = (data) => {
+  const schema = Joi.object({
+    name: Joi.string().required().min(1).max(100),
+    data: Joi.object({
+      recipient: Joi.string().email().required(),
+      subject: Joi.string().required().min(1).max(200),
+    }).required(),
+  });
+
+  return schema.validate(data, { abortEarly: false });
+};
