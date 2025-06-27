@@ -1,8 +1,8 @@
-module.exports = {
+export default {
   apps: [
     {
       name: 'job-processor',
-      script: './index.js',
+      script: './src/index.js',
       instances: 1,
       autorestart: true,
       watch: false,
