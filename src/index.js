@@ -58,8 +58,11 @@ async function startServer() {
     }
 
     logger.start('Initializing rate limiter...');
-    const rateLimiter = createRateLimiter({ points: 100, duration: 3600 });
-    // app.use('/api', rateLimiter);
+     // If you're testing locally, consider temporarily disabling rate limiting in development environments.
+    // eslint-disable-next-line no-unused-vars
+    const rateLimiter = createRateLimiter({ points: 60, duration: 60 });
+    // app.use('/api/login', rateLimiter);
+    // app.use('/api/jobs', rateLimiter);
     logger.success('Rate limiter initialized');
 
     if (redisConnected) {
@@ -157,7 +160,7 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, _promise) => {
   logger.error('Unhandled Promise Rejection', { 
     error: reason?.message || reason,
     location: 'unhandledRejection'
