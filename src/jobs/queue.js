@@ -4,9 +4,9 @@ import { getRedisClient } from '../config/redis.js';
 
 export const createJobQueue = () => {
   const redisClient = getRedisClient();
-  if (!redisClient) {
-    logger.error('❌ Redis client not available for job queue');
-    throw new Error('Redis client not initialized');
+  if (!redisClient || !redisClient.isOpen) {
+    logger.warn('⚠️ Redis client not available or disconnected for job queue');
+    return null; // Return null instead of throwing to avoid server crash
   }
 
   const jobQueue = new Queue('jobs', {
@@ -20,9 +20,11 @@ export const createJobQueue = () => {
     },
   });
 
+  logger.warn('✅ Job queue initialized');
+
   const queueEvents = new QueueEvents('jobs', { connection: redisClient });
-  queueEvents.on('completed', ({ jobId }) => logger.info(`Job ${jobId} completed`));
-  queueEvents.on('failed', ({ jobId, failedReason }) => logger.error(`Job ${jobId} failed: ${failedReason}`));
+  queueEvents.on('completed', ({ jobId }) => logger.warn(`⚠️ Job ${jobId} completed`));
+  queueEvents.on('failed', ({ jobId, failedReason }) => logger.warn(`⚠️ Job ${jobId} failed: ${failedReason}`));
 
   return jobQueue;
 };

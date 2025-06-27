@@ -1,28 +1,47 @@
 import { createJobQueue } from '../jobs/queue.js';
 import Job from '../models/job.model.js';
 import { logger } from '../utils/logger.js';
+import { getRedisClient, connectRedis } from '../config/redis.js';
 
 export const jobService = {
   async createJob(name, data) {
-    let job = null; // Define job
+    let job = null;
     try {
-      logger.info('🚀 Creating job', { name, data });
+      logger.warn('🚀 Creating job', { name, data });
+      let redisClient = getRedisClient();
+      if (!redisClient || !redisClient.isOpen) {
+        logger.warn('⚠️ Redis client not ready, attempting reconnect');
+        redisClient = await connectRedis();
+      }
       const queue = createJobQueue();
+      if (!queue) {
+        logger.warn('⚠️ Job queue not initialized');
+        throw new Error('Job queue not initialized');
+      }
       job = await Job.create({ name, data, status: 'active' });
-      logger.info('✅ Job saved to MongoDB', { jobId: job._id });
+      logger.warn('✅ Job saved to MongoDB', { jobId: job._id });
 
-      // Add timeout for queue.add
-      const queueJob = await Promise.race([
-        queue.add(name, { ...data, id: job._id }, { jobId: job._id.toString() }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Queue add timed out')), 10000)),
-      ]);
-      logger.info(`Created job ${job._id} with queue ID ${queueJob.id}`);
+      let queueJob = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          queueJob = await Promise.race([
+            queue.add(name, { ...data, id: job._id }, { jobId: job._id.toString() }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue add timed out')), 60000)),
+          ]);
+          break;
+        } catch (error) {
+          logger.warn('⚠️ Queue add attempt failed', { attempt, error: error.message });
+          if (attempt === 3) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+      logger.warn(`✅ Created job ${job._id} with queue ID ${queueJob.id}`);
       return job;
     } catch (error) {
-      logger.error('❌ Failed to create job', { error: error.message, stack: error.stack });
+      logger.warn('⚠️ Failed to create job', { error: error.message, stack: error.stack });
       if (job) {
         await Job.findByIdAndDelete(job._id);
-        logger.info('🧹 Cleaned up MongoDB job', { jobId: job._id });
+        logger.warn('🧹 Cleaned up MongoDB job', { jobId: job._id });
       }
       throw error;
     }
@@ -31,10 +50,10 @@ export const jobService = {
   async getJobs() {
     try {
       const jobs = await Job.find().sort({ createdAt: -1 });
-      logger.info('✅ Retrieved jobs', { count: jobs.length });
+      logger.warn('✅ Retrieved jobs', { count: jobs.length });
       return jobs;
     } catch (error) {
-      logger.error('❌ Failed to get jobs', { error: error.message, stack: error.stack });
+      logger.warn('⚠️ Failed to get jobs', { error: error.message, stack: error.stack });
       throw error;
     }
   },
@@ -46,10 +65,10 @@ export const jobService = {
         logger.warn('⚠️ Job not found', { jobId: id });
         throw new Error('Job not found');
       }
-      logger.info('✅ Retrieved job', { jobId: id });
+      logger.warn('✅ Retrieved job', { jobId: id });
       return job;
     } catch (error) {
-      logger.error('❌ Failed to get job', { error: error.message, stack: error.stack });
+      logger.warn('⚠️ Failed to get job', { error: error.message, stack: error.stack });
       throw error;
     }
   },
@@ -57,6 +76,10 @@ export const jobService = {
   async deleteJob(id) {
     try {
       const queue = createJobQueue();
+      if (!queue) {
+        logger.warn('⚠️ Job queue not initialized');
+        throw new Error('Job queue not initialized');
+      }
       const job = await Job.findById(id);
       if (!job) {
         logger.warn('⚠️ Job not found', { jobId: id });
@@ -65,10 +88,10 @@ export const jobService = {
       const queueJob = await queue.getJob(id);
       if (queueJob) await queueJob.remove();
       await job.remove();
-      logger.info(`Deleted job ${id}`);
+      logger.warn(`✅ Deleted job ${id}`);
       return job;
     } catch (error) {
-      logger.error('❌ Failed to delete job', { error: error.message, stack: error.stack });
+      logger.warn('⚠️ Failed to delete job', { error: error.message, stack: error.stack });
       throw error;
     }
   },
@@ -76,6 +99,10 @@ export const jobService = {
   async retryJob(id) {
     try {
       const queue = createJobQueue();
+      if (!queue) {
+        logger.warn('⚠️ Job queue not initialized');
+        throw new Error('Job queue not initialized');
+      }
       const job = await Job.findById(id);
       if (!job) {
         logger.warn('⚠️ Job not found', { jobId: id });
@@ -87,10 +114,10 @@ export const jobService = {
       }
       const queueJob = await queue.add(job.name, { ...job.data, id: job._id }, { jobId: job._id.toString() });
       await Job.findByIdAndUpdate(id, { status: 'active', result: null, failedAt: null });
-      logger.info(`Retried job ${id} with queue ID ${queueJob.id}`);
+      logger.warn(`✅ Retried job ${id} with queue ID ${queueJob.id}`);
       return job;
     } catch (error) {
-      logger.error('❌ Failed to retry job', { error: error.message, stack: error.stack });
+      logger.warn('⚠️ Failed to retry job', { error: error.message, stack: error.stack });
       throw error;
     }
   },

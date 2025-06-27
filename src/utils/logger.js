@@ -20,43 +20,20 @@ if (!fs.existsSync(LOG_DIR)) {
 }
 
 // === FORMATS ===
-const devFormat = winston.format.combine(
+const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.colorize(),
-  winston.format.printf(({ timestamp, level, message, stack }) => {
-    return stack
-      ? `${timestamp} [${level}]: ${message}\n${stack}`
-      : `${timestamp} [${level}]: ${message}`;
-  })
-);
-
-const prodFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.errors({ stack: true }),
-  winston.format.json(),
-  winston.format.printf((info) => {
-    return JSON.stringify({
-      ...info,
-      service: SERVICE_NAME,
-      version: VERSION,
-      environment: ENV,
-    });
-  })
-);
-
-const fileFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }),
-  winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
+  winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let output = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
     if (Object.keys(meta).length > 0) {
-      output += `\n  Data: ${JSON.stringify(meta, null, 2)}`;
+      output += ` | Data: ${JSON.stringify(meta, null, 2)}`;
     }
-    if (stack) {
-      output += `\n  Stack: ${stack}`;
-    }
-    return output + '\n';
+    return output;
   })
+);
+
+const consoleFormat = winston.format.combine(
+  winston.format.colorize(),
+  logFormat
 );
 
 // === LEVEL ===
@@ -70,13 +47,13 @@ const LOG_LEVEL = levelMap[ENV] || 'debug';
 // === TRANSPORTS ===
 const transports = [
   new winston.transports.Console({
-    format: ENV === 'production' ? prodFormat : devFormat,
+    format: consoleFormat,
     silent: ENV === 'test',
   }),
   new winston.transports.File({
     filename: path.join(LOG_DIR, 'combined.log'),
-    format: fileFormat,
-    maxsize: 20 * 1024 * 1024,
+    format: logFormat,
+    maxsize: 20 * 1024 * 1024, // 20MB
     maxFiles: 10,
     tailable: true,
   }),
@@ -85,24 +62,7 @@ const transports = [
 // === LOGGER ===
 const logger = winston.createLogger({
   level: LOG_LEVEL,
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
   transports,
-  exceptionHandlers: [
-    new winston.transports.File({
-      filename: path.join(LOG_DIR, 'combined.log'),
-      format: fileFormat,
-    }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({
-      filename: path.join(LOG_DIR, 'combined.log'),
-      format: fileFormat,
-    }),
-  ],
   exitOnError: false,
 });
 
@@ -111,8 +71,6 @@ logger.info('Logger initialized', {
   environment: ENV,
   logLevel: LOG_LEVEL,
   logDirectory: LOG_DIR,
-  nodeVersion: process.version,
-  platform: process.platform,
 });
 
 export { logger };

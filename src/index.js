@@ -36,63 +36,72 @@ const withTimeout = (promise, timeout, label) => {
 
 async function startServer() {
   try {
-    console.log('🚀 Step 1: Starting Redis connection...');
+    logger.warn('🚀 Step 1: Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
     try {
-      await withTimeout(connectRedis(), 5000, 'Redis connection');
+      await withTimeout(connectRedis(), 15000, 'Redis connection');
       redisConnected = true;
-      console.log('✅ Redis connected successfully');
+      logger.warn('✅ Redis connected successfully');
     } catch (redisError) {
-      console.warn('⚠️ Redis connection failed:', redisError.message);
+      logger.warn('⚠️ Redis connection failed:', { error: redisError.message });
     }
 
-    console.log('🚀 Step 2: Connecting to MongoDB...');
+    logger.warn('🚀 Step 2: Connecting to MongoDB...');
     try {
-      await withTimeout(connectDB(), 5000, 'MongoDB connection');
-      console.log('✅ MongoDB connected successfully');
+      await withTimeout(connectDB(), 10000, 'MongoDB connection');
+      logger.warn('✅ MongoDB connected successfully');
     } catch (mongoError) {
-      console.error('❌ MongoDB connection failed:', mongoError.message);
+      logger.warn('⚠️ MongoDB connection failed:', { error: mongoError.message });
       throw mongoError;
     }
 
-    console.log('🚀 Step 3: Initializing rate limiter...');
+    logger.warn('🚀 Step 3: Initializing rate limiter...');
     const rateLimiter = createRateLimiter({ points: 100, duration: 3600 });
-    // app.use('/api/login', rateLimiter);
-    // app.use('/api/jobs', rateLimiter);
-    console.log('✅ Rate limiter initialized');
+    // app.use('/api', rateLimiter);
+    logger.warn('✅ Rate limiter initialized');
 
     if (redisConnected) {
-      console.log('🚀 Step 4: Initializing job queue and worker...');
+      logger.warn('🚀 Step 4: Initializing job queue and worker...');
       try {
         jobQueue = createJobQueue();
-        createEmailWorker();
-        console.log('✅ Job queue and worker initialized');
+        if (jobQueue) {
+          createEmailWorker();
+          logger.warn('✅ Job queue and worker initialized');
+        } else {
+          logger.warn('⚠️ Job queue initialization failed, skipping worker');
+          redisConnected = false;
+        }
       } catch (queueError) {
-        console.warn('⚠️ Failed to initialize job queue:', queueError.message);
+        logger.warn('⚠️ Failed to initialize job queue or worker:', { error: queueError.message });
+        redisConnected = false;
       }
     } else {
-      console.warn('⚠️ Skipping job queue due to Redis failure');
+      logger.warn('⚠️ Skipping job queue due to Redis failure');
     }
 
     if (redisConnected && jobQueue) {
-      console.log('🚀 Step 5: Setting up Bull Board dashboard...');
-      const serverAdapter = new ExpressAdapter();
-      serverAdapter.setBasePath('/dashboard');
-      createBullBoard({
-        queues: [new BullMQAdapter(jobQueue)],
-        serverAdapter,
-      });
-      app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
-      console.log('✅ Bull Board dashboard enabled at /dashboard');
+      logger.warn('🚀 Step 5: Setting up Bull Board dashboard...');
+      try {
+        const serverAdapter = new ExpressAdapter();
+        serverAdapter.setBasePath('/dashboard');
+        createBullBoard({
+          queues: [new BullMQAdapter(jobQueue)],
+          serverAdapter,
+        });
+        app.use('/dashboard', authMiddleware, serverAdapter.getRouter());
+        logger.warn('✅ Bull Board dashboard enabled at /dashboard');
+      } catch (bullBoardError) {
+        logger.warn('⚠️ Failed to set up Bull Board:', { error: bullBoardError.message });
+      }
     } else {
-      console.warn('⚠️ Bull Board disabled due to Redis issue');
+      logger.warn('⚠️ Bull Board disabled due to Redis or queue issue');
     }
 
-    console.log('🚀 Step 6: Registering API routes...');
+    logger.warn('🚀 Step 6: Registering API routes...');
     app.use('/api', jobRoutes);
     app.use(errorHandler);
-    console.log('✅ API routes configured');
+    logger.warn('✅ API routes configured');
 
     app.get('/health', (req, res) => {
       const memoryUsage = process.memoryUsage();
@@ -110,16 +119,16 @@ async function startServer() {
 
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
+      logger.warn(`✅ Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error.message);
+    logger.warn('⚠️ Failed to start server:', { error: error.message });
     process.exit(1);
   }
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Promise Rejection:', reason);
+  logger.warn('⚠️ Unhandled Promise Rejection:', { reason });
 });
 
 startServer();
