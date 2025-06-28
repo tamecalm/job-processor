@@ -14,6 +14,7 @@ import { createEmailWorker } from './jobs/workers/emailWorker.js'; // Email proc
 import { authMiddleware } from './api/middlewares/auth.js'; // Authentication middleware
 import { errorHandler } from './api/middlewares/errorHandler.js'; // Global error handler
 import { createRateLimiter } from './api/middlewares/rateLimiter.js'; // Rate limiting middleware
+import { setupSwagger } from './config/swagger.js'; // Swagger UI configuration
 import { logger } from './utils/logger.js'; // Logging utility
 
 dotenv.config();
@@ -115,6 +116,10 @@ async function startServer() {
       logger.warn('Bull Board disabled due to Redis or queue issue');
     }
 
+    logger.start('Setting up Swagger API documentation...');
+    // Setup Swagger UI for API documentation
+    setupSwagger(app, '/api-docs');
+
     logger.start('Registering API routes...');
     // Register API routes and global error handler
     app.use('/api', jobRoutes);
@@ -144,6 +149,7 @@ async function startServer() {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
       logger.success(`Server running on port ${PORT}`);
+      logger.info(`API Documentation: http://localhost:${PORT}/api-docs`);
       logger.info(`Dashboard available at http://localhost:${PORT}/dashboard`);
       logger.info(`Health check at http://localhost:${PORT}/health`);
       logger.info(`API base URL: http://localhost:${PORT}/api`);
