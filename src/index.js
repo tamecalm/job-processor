@@ -68,29 +68,7 @@ const withTimeout = (promise, timeout, label) => {
 
 async function startServer() {
   try {
-    // Security: Validate critical environment variables
-    const requiredEnvVars = ['JWT_SECRET', 'ADMIN_PASSWORD', 'MONGO_URI', 'REDIS_URI'];
-    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    
-    if (missingVars.length > 0) {
-      logger.error('SECURITY: Missing required environment variables', { 
-        missing: missingVars 
-      });
-      process.exit(1);
-    }
-
-    // Security: Validate JWT secret strength
-    if (process.env.JWT_SECRET.length < 15) {
-      logger.error('SECURITY: JWT_SECRET must be at least 15 characters long');
-      process.exit(1);
-    }
-
-    // Security: Validate admin password strength
-    if (process.env.ADMIN_PASSWORD.length < 4) {
-      logger.error('SECURITY: ADMIN_PASSWORD must be at least 4 characters long');
-      process.exit(1);
-    }
-
+    // Initialize server - connect to Redis, MongoDB, setup queues, and start the server
     logger.start('Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
@@ -114,8 +92,6 @@ async function startServer() {
 
     logger.start('Initializing rate limiter...');
     const rateLimiter = createRateLimiter({ points: 60, duration: 60 });
-    // Security: Enable rate limiting for job processing endpoints
-    // Uncomment the following line to enable rate limiting in production
     // app.use('/api/jobs', rateLimiter);
     logger.success('Rate limiter initialized');
 

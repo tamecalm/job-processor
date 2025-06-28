@@ -86,6 +86,7 @@ export const jobController = {
 
   /**
    * Authenticates user and generates JWT token
+   * Authenticates user and generates JWT token
    * @param {Object} req - Express request object containing username/password in body
    * @param {Object} res - Express response object
    * @param {Function} next - Next middleware function
@@ -149,9 +150,26 @@ export const jobController = {
         // Consistent response time to prevent timing attacks
         await new Promise(resolve => setTimeout(resolve, 1000));
         
+        // Log failed attempts for security monitoring
+        logger.warn('Failed authentication attempt', { 
+          username: username?.substring(0, 50), // Limit logged username length
+          ip: req.ip,
+          userAgent: req.get('User-Agent')?.substring(0, 100),
+          timestamp: new Date().toISOString()
+        });
+        
+        // Consistent response time to prevent timing attacks
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         res.status(401).json({ error: 'Invalid credentials' });
       }
     } catch (error) {
+      logger.error('Authentication error', { 
+        error: error.message,
+        ip: req.ip,
+        // Don't log full stack trace for security
+        type: error.name
+      });
       logger.error('Authentication error', { 
         error: error.message,
         ip: req.ip,
