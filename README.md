@@ -1,10 +1,11 @@
 # 🚀 Job Processing System
 
-A production-ready background job processing system built with Node.js, Express, BullMQ, Redis, and MongoDB. Features a real-time dashboard, secure APIs, and robust job handling with retry mechanisms.
+A production-ready background job processing system built with Node.js, Express, BullMQ, Redis, and MongoDB. Features a real-time dashboard, secure APIs, comprehensive documentation, and robust job handling with retry mechanisms.
 
 ## 📋 Table of Contents
 
 - [Features](#-features)
+- [Security](#-security)
 - [Architecture](#-architecture)
 - [Prerequisites](#-prerequisites)
 - [Quick Start](#-quick-start)
@@ -16,6 +17,7 @@ A production-ready background job processing system built with Node.js, Express,
 - [Monitoring & Logging](#-monitoring--logging)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
+- [License](#-license)
 
 ## ✨ Features
 
@@ -27,17 +29,50 @@ A production-ready background job processing system built with Node.js, Express,
 - **Real-time Dashboard**: Bull Board integration for job monitoring
 
 ### Security & Performance
-- **JWT Authentication**: Secure API access with token-based auth
+- **JWT Authentication**: Secure API access with token-based auth and enhanced claims
 - **Rate Limiting**: Redis-backed rate limiting to prevent abuse
-- **Input Validation**: Joi schema validation for all API inputs
-- **CORS & Security Headers**: Helmet.js for security best practices
+- **Input Validation**: Joi schema validation with security patterns for all API inputs
+- **CORS & Security Headers**: Helmet.js for security best practices with CSP
 - **Structured Logging**: Winston logger with file and console output
+- **Credential Security**: Secure credential handling with no hardcoded fallbacks
+
+### API Documentation
+- **Interactive Swagger UI**: Comprehensive API documentation at `/api-docs`
+- **OpenAPI 3.0 Specification**: Complete API schema with examples
+- **Try It Out**: Interactive API testing directly from documentation
+- **JSON Export**: Raw swagger document available at `/api-docs.json`
 
 ### Monitoring & Operations
 - **Health Checks**: System status endpoint with memory and uptime metrics
 - **Error Handling**: Comprehensive error handling with proper HTTP status codes
 - **Graceful Shutdown**: Clean process termination handling
 - **Docker Support**: Full containerization with Docker Compose
+
+## 🔒 Security
+
+### Authentication & Authorization
+- **JWT Tokens**: Secure token-based authentication with IP validation
+- **Basic Auth Fallback**: Secure basic authentication for dashboard access
+- **No Hardcoded Credentials**: All credentials from environment variables only
+- **Token Validation**: Enhanced JWT validation with issuer/audience claims
+
+### Input Security
+- **Schema Validation**: Joi validation with security patterns
+- **XSS Prevention**: Input sanitization to prevent script injection
+- **SQL Injection Protection**: MongoDB parameterized queries
+- **Request Size Limits**: Configurable request payload limits
+
+### Infrastructure Security
+- **Security Headers**: Comprehensive HTTP security headers via Helmet.js
+- **CORS Configuration**: Configurable cross-origin resource sharing
+- **TLS/SSL Support**: Production-ready TLS configuration
+- **Rate Limiting**: Distributed rate limiting with Redis backend
+
+### Credential Management
+- **Environment Variables**: All secrets via environment configuration
+- **Credential Validation**: Runtime validation of credential strength
+- **Secure Logging**: Sensitive data masking in logs
+- **Timing Attack Prevention**: Consistent response times for auth failures
 
 ## 🏗 Architecture
 
@@ -72,6 +107,7 @@ job-processor/
 │   ├── config/                # Configuration management
 │   │   ├── db.js              # MongoDB connection
 │   │   ├── redis.js           # Redis connection
+│   │   ├── swagger.js         # Swagger UI configuration
 │   │   └── index.js           # Environment config
 │   ├── jobs/                  # Job processing layer
 │   │   ├── processors/        # Job execution logic
@@ -82,6 +118,8 @@ job-processor/
 │   ├── utils/                 # Utilities (logger, validator)
 │   ├── dashboard/             # Static dashboard files
 │   └── index.js               # Application entry point
+├── swagger/                   # API documentation
+│   └── swagger.json           # OpenAPI specification
 ├── tests/                     # Test suites
 ├── docker-compose.yml         # Container orchestration
 ├── Dockerfile                 # Container definition
@@ -122,15 +160,15 @@ REDIS_URI=redis://localhost:6379
 # For Upstash Redis:
 # REDIS_URI=rediss://default:password@host:port
 
-# Security
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-ADMIN_PASSWORD=your-secure-admin-password
+# Security (CRITICAL: CHANGE THESE!)
+# Generate with: openssl rand -base64 64
+JWT_SECRET=CHANGE-THIS-TO-A-CRYPTOGRAPHICALLY-SECURE-RANDOM-STRING-AT-LEAST-64-CHARACTERS-LONG
 
-# Optional: Redis Authentication (if using cloud Redis)
-REDIS_USERNAME=default
-REDIS_PASSWORD=your-redis-password
-REDIS_HOST=your-redis-host
-REDIS_PORT=6379
+# Generate with: openssl rand -base64 32
+ADMIN_PASSWORD=CHANGE-THIS-TO-A-STRONG-PASSWORD-AT-LEAST-12-CHARS
+
+# Optional: Production CORS origins
+ALLOWED_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
 ```
 
 ### 3. Start Services
@@ -148,6 +186,7 @@ docker-compose up -d
 
 ### 4. Verify Installation
 - **API Health Check**: http://localhost:3000/health
+- **API Documentation**: http://localhost:3000/api-docs
 - **Dashboard**: http://localhost:3000/dashboard (login with admin credentials)
 - **API Base**: http://localhost:3000/api
 
@@ -155,14 +194,27 @@ docker-compose up -d
 
 ### Environment Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port | `3000` | No |
-| `NODE_ENV` | Environment | `development` | No |
-| `MONGO_URI` | MongoDB connection string | `mongodb://localhost:27017/job_processor` | Yes |
-| `REDIS_URI` | Redis connection string | `redis://localhost:6379` | Yes |
-| `JWT_SECRET` | JWT signing secret | - | Yes |
-| `ADMIN_PASSWORD` | Dashboard admin password | - | Yes |
+| Variable | Description | Default | Required | Security Notes |
+|----------|-------------|---------|----------|----------------|
+| `PORT` | Server port | `3000` | No | - |
+| `NODE_ENV` | Environment | `development` | No | Affects security settings |
+| `MONGO_URI` | MongoDB connection string | `mongodb://localhost:27017/job_processor` | Yes | Use TLS in production |
+| `REDIS_URI` | Redis connection string | `redis://localhost:6379` | Yes | Use TLS in production |
+| `JWT_SECRET` | JWT signing secret | - | Yes | **MUST be 32+ chars** |
+| `ADMIN_PASSWORD` | Dashboard admin password | - | Yes | **MUST be 12+ chars** |
+| `ALLOWED_ORIGINS` | CORS allowed origins | - | No | Required for production |
+
+### Security Requirements
+
+**JWT Secret:**
+- **Minimum 32 characters** (recommend 64+)
+- Generate with: `openssl rand -base64 64`
+- Must be cryptographically secure random string
+
+**Admin Password:**
+- **Minimum 12 characters**
+- Must include mixed case, numbers, and symbols
+- Generate with: `openssl rand -base64 32`
 
 ### Redis Configuration Notes
 - **Local Redis**: `redis://localhost:6379`
@@ -177,8 +229,19 @@ docker-compose up -d
 
 ## 📚 API Documentation
 
+### Interactive Documentation
+Access the comprehensive API documentation at:
+- **Swagger UI**: http://localhost:3000/api-docs
+- **JSON Schema**: http://localhost:3000/api-docs.json
+
+### Features
+- **Interactive Testing**: Try API endpoints directly from the documentation
+- **Request/Response Examples**: Complete examples for all endpoints
+- **Authentication Guide**: Step-by-step authentication instructions
+- **Schema Validation**: Input/output schema documentation
+
 ### Authentication
-All API endpoints (except `/login`) require JWT authentication:
+All API endpoints (except `/login` and `/health`) require JWT authentication:
 ```bash
 Authorization: Bearer <your-jwt-token>
 ```
@@ -263,9 +326,10 @@ npm run dev  # Uses nodemon for auto-restart
 
 ### Testing
 ```bash
-npm test     # Run all tests
-npm run test:unit        # Unit tests only
-npm run test:integration # Integration tests only
+npm test                     # Run all tests
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests only
+npm run test:coverage       # Coverage report
 ```
 
 ### Adding New Job Types
@@ -294,11 +358,23 @@ export const validateYourJob = (data) => {
 
 ### Code Quality
 - **ESLint**: Code linting and formatting
-- **Prettier**: Code formatting
-- **Husky**: Pre-commit hooks
-- **Jest**: Testing framework
+- **Jest**: Testing framework with comprehensive coverage
+- **Security**: Input validation and sanitization
 
 ## 🚀 Production Deployment
+
+### Security Checklist
+Before deploying to production:
+
+- [ ] **Strong Credentials**: JWT secret 64+ chars, admin password 12+ chars
+- [ ] **Environment Variables**: All secrets in environment, not code
+- [ ] **TLS/SSL**: Enable HTTPS for all connections
+- [ ] **CORS**: Configure allowed origins
+- [ ] **Rate Limiting**: Enable and configure rate limits
+- [ ] **Monitoring**: Set up health check monitoring
+- [ ] **Logging**: Configure log aggregation
+- [ ] **Backups**: Set up database backups
+- [ ] **Updates**: Keep dependencies updated
 
 ### Docker Deployment
 ```bash
@@ -320,8 +396,9 @@ NODE_ENV=production
 PORT=3000
 MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/job_processor
 REDIS_URI=rediss://default:pass@redis-host:6380
-JWT_SECRET=super-secure-random-string-256-bits
-ADMIN_PASSWORD=very-secure-admin-password
+JWT_SECRET=super-secure-random-string-generated-with-openssl-rand-base64-64
+ADMIN_PASSWORD=very-secure-admin-password-with-special-chars-123!
+ALLOWED_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
 ```
 
 ### PM2 Process Management
@@ -345,18 +422,26 @@ Set up monitoring for:
 - Redis connection status
 - MongoDB connection status
 - Memory usage and CPU metrics
+- Authentication failure rates
 
 ## 📈 Monitoring & Logging
 
 ### Logging Levels
-- **Error**: System errors, failed jobs
-- **Warn**: Warnings, degraded performance
-- **Info**: General information, job completion
-- **Debug**: Detailed debugging information
+- **Error**: System errors, failed jobs, security incidents
+- **Warn**: Warnings, degraded performance, failed auth attempts
+- **Info**: General information, job completion, system events
+- **Debug**: Detailed debugging information (development only)
 
 ### Log Files
-- `src/combined.log`: All application logs
+- `logs/combined.log`: All application logs
 - Console output with colored formatting in development
+
+### Security Monitoring
+Monitor these security events:
+- **Failed Authentication**: Track failed login attempts
+- **Rate Limiting**: Monitor rate limit violations
+- **Input Validation**: Track validation failures
+- **Error Patterns**: Identify potential attack patterns
 
 ### Metrics to Monitor
 - **Job Processing Rate**: Jobs per minute/hour
@@ -364,6 +449,7 @@ Set up monitoring for:
 - **Queue Length**: Number of pending jobs
 - **Memory Usage**: Application memory consumption
 - **Redis/MongoDB Connection Status**
+- **Authentication Success/Failure Rates**
 
 ## 🔧 Troubleshooting
 
@@ -375,6 +461,7 @@ Solution: Check Redis URI format and network connectivity
 - Verify REDIS_URI in .env
 - Test Redis connection: redis-cli ping
 - Check firewall/security groups
+- Ensure TLS configuration for production
 ```
 
 **MongoDB Connection Failed:**
@@ -383,6 +470,24 @@ Solution: Verify MongoDB connection string
 - Check MONGO_URI format
 - Verify database credentials
 - Ensure network access to MongoDB
+- Check TLS/SSL requirements
+```
+
+**JWT Authentication Errors:**
+```
+Solution: Check JWT configuration
+- Ensure JWT_SECRET is at least 32 characters
+- Verify JWT_SECRET matches between sessions
+- Check token expiration
+- Validate issuer/audience claims
+```
+
+**Dashboard Login Failed:**
+```
+Solution: Check admin credentials
+- Verify ADMIN_PASSWORD is set and strong (12+ chars)
+- Check for special characters in password
+- Ensure no hardcoded fallbacks are used
 ```
 
 **Jobs Not Processing:**
@@ -391,18 +496,24 @@ Solution: Check worker and queue status
 - Verify Redis connection
 - Check worker logs for errors
 - Ensure queue and worker use same Redis instance
+- Monitor job queue statistics
 ```
 
-**Dashboard Not Loading:**
+**API Documentation Not Loading:**
 ```
-Solution: Check authentication and static files
-- Verify ADMIN_PASSWORD
-- Check if static files are served correctly
-- Verify JWT_SECRET configuration
+Solution: Check Swagger configuration
+- Verify swagger.json file exists in swagger/ directory
+- Check file permissions
+- Validate JSON syntax
+- Check server logs for Swagger errors
 ```
 
 ### Debug Mode
-Set `NODE_ENV=development` for detailed logging and error messages.
+Set `NODE_ENV=development` for:
+- Detailed logging and error messages
+- Full stack traces in error responses
+- Additional health check information
+- Swagger UI debugging features
 
 ### Performance Tuning
 - **Worker Concurrency**: Adjust in `emailWorker.js`
@@ -423,6 +534,14 @@ Set `NODE_ENV=development` for detailed logging and error messages.
 - Add tests for new features
 - Update documentation for API changes
 - Use conventional commit messages
+- Ensure security best practices
+
+### Security Contributions
+When contributing security-related changes:
+- Follow responsible disclosure practices
+- Document security implications
+- Add appropriate tests
+- Update security documentation
 
 ## 📄 License
 
@@ -436,9 +555,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Redis**: In-memory data structure store
 - **Winston**: Logging library
 - **Bull Board**: Queue monitoring dashboard
+- **Swagger UI**: API documentation interface
 
 ---
 
 **Built with ❤️ for reliable background job processing**
 
 For questions or support, please open an issue or contact the development team.
+
+**Security Notice**: This software is provided "as is" without warranty. Users are responsible for implementing appropriate security measures for their specific use case.
