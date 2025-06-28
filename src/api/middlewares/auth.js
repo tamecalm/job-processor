@@ -13,24 +13,8 @@ export const authMiddleware = async (req, res, next) => {
   const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : req.query.token;
 
   // JWT Authentication Flow
-  // JWT Authentication Flow
   if (token) {
     try {
-      const decoded = jwt.verify(token, config.jwtSecret, {
-        issuer: 'job-processor-api',
-        audience: 'job-processor-client'
-      });
-      
-      // Additional security checks
-      if (decoded.ip && decoded.ip !== req.ip) {
-        logger.warn('JWT token IP mismatch detected', {
-          tokenIp: decoded.ip,
-          requestIp: req.ip,
-          user: decoded.user
-        });
-        return res.status(401).json({ error: 'Token validation failed' });
-      }
-      
       const decoded = jwt.verify(token, config.jwtSecret, {
         issuer: 'job-processor-api',
         audience: 'job-processor-client'
@@ -49,7 +33,6 @@ export const authMiddleware = async (req, res, next) => {
       req.user = decoded;
       logger.debug('JWT authentication successful', { 
         userId: decoded.user || 'unknown',
-        userId: decoded.user || 'unknown',
         method: 'JWT'
       });
       return next();
@@ -58,22 +41,14 @@ export const authMiddleware = async (req, res, next) => {
         error: error.message,
         tokenSource: authHeader ? 'header' : 'query',
         ip: req.ip
-        tokenSource: authHeader ? 'header' : 'query',
-        ip: req.ip
       });
-      return res.status(401).json({ error: 'Invalid or expired token' });
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
   }
 
   // Basic Authentication Flow - SECURE VERSION
-  // Basic Authentication Flow - SECURE VERSION
   if (authHeader && authHeader.startsWith('Basic ')) {
     const base64Credentials = authHeader.replace('Basic ', '');
-    
-    try {
-      const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-      const [username, password] = credentials.split(':');
     
     try {
       const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
@@ -124,20 +99,16 @@ export const authMiddleware = async (req, res, next) => {
       return res.status(401)
         .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
         .json({ error: 'Invalid credentials format' });
-        .json({ error: 'Invalid credentials format' });
     }
   }
 
   // No credentials provided
-  // No credentials provided
   logger.debug('Authentication required - no credentials provided', {
     userAgent: req.get('User-Agent')?.substring(0, 50) || 'unknown',
-    ip: req.ip
     ip: req.ip
   });
   
   return res.status(401)
     .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
-    .json({ error: 'Authentication required' });
     .json({ error: 'Authentication required' });
 };
