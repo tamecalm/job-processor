@@ -21,14 +21,43 @@ dotenv.config();
 
 const app = express();
 
-// Basic middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+// Security: Enhanced security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Required for Swagger UI
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// Security: CORS configuration
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.ALLOWED_ORIGINS?.split(',') || false
+    : true,
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
+
+app.use(express.json({ limit: '10mb' })); // Security: Limit request size
+
+// Security: Add request ID for tracking
+app.use((req, res, next) => {
+  req.id = Math.random().toString(36).substring(2, 15);
+  res.setHeader('X-Request-ID', req.id);
+  next();
+});
 
 // Timeout wrappers for debugging long hangs
 const withTimeout = (promise, timeout, label) => {
-  // Utility to add timeout to promises for debugging long-running operations
   return Promise.race([
     promise,
     new Promise((_, reject) =>
@@ -39,13 +68,34 @@ const withTimeout = (promise, timeout, label) => {
 
 async function startServer() {
   try {
-    // Initialize server - connect to Redis, MongoDB, setup queues, and start the server
+    // Security: Validate critical environment variables
+    const requiredEnvVars = ['JWT_SECRET', 'ADMIN_PASSWORD', 'MONGO_URI', 'REDIS_URI'];
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      logger.error('SECURITY: Missing required environment variables', { 
+        missing: missingVars 
+      });
+      process.exit(1);
+    }
+
+    // Security: Validate JWT secret strength
+    if (process.env.JWT_SECRET.length < 32) {
+      logger.error('SECURITY: JWT_SECRET must be at least 32 characters long');
+      process.exit(1);
+    }
+
+    // Security: Validate admin password strength
+    if (process.env.ADMIN_PASSWORD.length < 12) {
+      logger.error('SECURITY: ADMIN_PASSWORD must be at least 12 characters long');
+      process.exit(1);
+    }
+
     logger.start('Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
     
     try {
-      // Attempt to connect to Redis with a timeout
       await withTimeout(connectRedis(), 15000, 'Redis connection');
       redisConnected = true;
       logger.success('Redis connected successfully');
@@ -55,7 +105,6 @@ async function startServer() {
 
     logger.start('Connecting to MongoDB...');
     try {
-      // Connect to MongoDB with a timeout
       await withTimeout(connectDB(), 10000, 'MongoDB connection');
       logger.success('MongoDB connected successfully');
     } catch (mongoError) {
@@ -64,21 +113,18 @@ async function startServer() {
     }
 
     logger.start('Initializing rate limiter...');
-    // Rate limiter configuration (60 requests per minute)
-    // Disabled by default - uncomment app.use line to enable
     const rateLimiter = createRateLimiter({ points: 60, duration: 60 });
-    // app.use('/api/jobs', rateLimiter);
+    // Security: Enable rate limiting for authentication endpoints
+    app.use('/api/login', rateLimiter);
     logger.success('Rate limiter initialized');
 
     if (redisConnected) {
       logger.start('Initializing job queue and worker...');
       try {
-        // Initialize job queue and email worker
         jobQueue = createJobQueue();
         if (jobQueue) {
           logger.success('Job queue initialized');
           
-          // Initialize email processing worker
           const worker = createEmailWorker();
           if (worker) {
             logger.success('Email worker initialized');
@@ -100,7 +146,6 @@ async function startServer() {
     if (redisConnected && jobQueue) {
       logger.start('Setting up Bull Board dashboard...');
       try {
-        // Initialize Bull Board dashboard for monitoring job queues
         const serverAdapter = new ExpressAdapter();
         serverAdapter.setBasePath('/dashboard');
         createBullBoard({
@@ -117,30 +162,37 @@ async function startServer() {
     }
 
     logger.start('Setting up Swagger API documentation...');
-    // Setup Swagger UI for API documentation
     setupSwagger(app, '/api-docs');
 
     logger.start('Registering API routes...');
-    // Register API routes and global error handler
     app.use('/api', jobRoutes);
     app.use(errorHandler);
     logger.success('API routes configured');
 
-    // Health check endpoint - provides server status metrics
+    // Health check endpoint with security considerations
     app.get('/health', (req, res) => {
       const memoryUsage = process.memoryUsage();
       const uptime = process.uptime();
-      res.json({
+      
+      // Security: Limited information disclosure
+      const healthData = {
         status: redisConnected ? 'OK' : 'Degraded (Redis unavailable)',
         uptime: `${Math.floor(uptime / 60)} minutes`,
-        memoryUsage: {
+        timestamp: new Date().toISOString(),
+        version: process.env.npm_package_version || '1.0.0'
+      };
+
+      // Security: Only include detailed info in development
+      if (process.env.NODE_ENV === 'development') {
+        healthData.memoryUsage = {
           heapUsed: `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
           heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
-        },
-        redis: getRedisClient() ? 'Connected' : 'Disconnected',
-        queue: jobQueue ? 'Initialized' : 'Not Available',
-        timestamp: new Date().toISOString(),
-      });
+        };
+        healthData.redis = getRedisClient() ? 'Connected' : 'Disconnected';
+        healthData.queue = jobQueue ? 'Initialized' : 'Not Available';
+      }
+
+      res.json(healthData);
     });
 
     // Serve static files for the dashboard UI
@@ -161,35 +213,49 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown handlers for termination signals
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT, shutting down gracefully...');
-  process.exit(0);
-});
+// Security: Enhanced graceful shutdown
+const gracefulShutdown = async (signal) => {
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+  
+  try {
+    // Close Redis connections
+    const { disconnectRedis } = await import('./config/redis.js');
+    await disconnectRedis();
+    
+    // Close MongoDB connections
+    const { disconnectDB } = await import('./config/db.js');
+    await disconnectDB();
+    
+    logger.info('Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during graceful shutdown', { error: error.message });
+    process.exit(1);
+  }
+};
 
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM, shutting down gracefully...');
-  process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-process.on('unhandledRejection', (reason, _promise) => {
-  // Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Promise Rejection', {
     error: reason?.message || reason,
-    location: 'unhandledRejection'
+    location: 'unhandledRejection',
+    // Security: Don't log full stack traces in production
+    ...(process.env.NODE_ENV === 'development' && { stack: reason?.stack })
   });
 });
 
 process.on('uncaughtException', (error) => {
-  // Handle uncaught exceptions
   logger.error('Uncaught Exception', {
     error: error.message,
-    location: 'uncaughtException'
+    location: 'uncaughtException',
+    // Security: Don't log full stack traces in production
+    ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
   });
   process.exit(1);
 });
 
-// Export app for testing
 export { app };
 
 startServer();

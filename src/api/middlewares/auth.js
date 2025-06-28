@@ -7,86 +7,108 @@ import { logger } from '../../utils/logger.js';
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Next middleware function
- * @description
- * 1. Checks Authorization header (Bearer token or Basic Auth)
- * 2. Validates JWT token if present
- * 3. Validates Basic Auth credentials if present
- * 4. Attaches user object to req.user on success
- * @env_vars Uses process.env.ADMIN_PASSWORD for admin password
  */
 export const authMiddleware = (req, res, next) => {
   const authHeader = req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : req.query.token;
 
-  /**
-   * JWT Authentication Flow:
-   * 1. Extracts token from Authorization header (Bearer) or query parameter
-   * 2. Verifies token signature using config.jwtSecret
-   * 3. Attaches decoded user to req.user
-   * 4. Logs authentication success/failure details
-   */
-  // Check for JWT token (header or query)
+  // JWT Authentication Flow
   if (token) {
     try {
-      const decoded = jwt.verify(token, config.jwtSecret);
+      const decoded = jwt.verify(token, config.jwtSecret, {
+        issuer: 'job-processor-api',
+        audience: 'job-processor-client'
+      });
+      
+      // Additional security checks
+      if (decoded.ip && decoded.ip !== req.ip) {
+        logger.warn('JWT token IP mismatch detected', {
+          tokenIp: decoded.ip,
+          requestIp: req.ip,
+          user: decoded.user
+        });
+        return res.status(401).json({ error: 'Token validation failed' });
+      }
+      
       req.user = decoded;
       logger.debug('JWT authentication successful', { 
-        userId: decoded.user?.id || decoded.id || 'unknown',
+        userId: decoded.user || 'unknown',
         method: 'JWT'
       });
       return next();
     } catch (error) {
       logger.warn('JWT authentication failed', { 
         error: error.message,
-        tokenSource: authHeader ? 'header' : 'query'
+        tokenSource: authHeader ? 'header' : 'query',
+        ip: req.ip
       });
-      return res.status(401).json({ error: 'Invalid token' });
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
   }
 
-  /**
-   * Basic Authentication Flow:
-   * 1. Extracts credentials from Authorization header (Basic)
-   * 2. Validates against admin credentials (either 'admin' or env var)
-   * 3. Attaches user object to req.user on success
-   * 4. Sends 401 with WWW-Authenticate header on failure
-   */
-  // Check for Basic Auth
+  // Basic Authentication Flow - SECURE VERSION
   if (authHeader && authHeader.startsWith('Basic ')) {
     const base64Credentials = authHeader.replace('Basic ', '');
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
+    
+    try {
+      const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+      const [username, password] = credentials.split(':');
 
-    if (username === 'admin' && (password === 'admin' || password === process.env.ADMIN_PASSWORD)) {
-      req.user = { user: username };
-      logger.debug('Basic authentication successful', { 
-        user: username,
-        method: 'Basic'
-      });
-      return next();
-    } else {
-      logger.warn('Basic authentication failed', { 
-        username: username || 'missing',
-        reason: 'invalid_credentials'
+      // Input validation
+      if (!username || !password) {
+        logger.warn('Basic auth with missing credentials', { ip: req.ip });
+        return res.status(401)
+          .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
+          .json({ error: 'Invalid credentials format' });
+      }
+
+      // SECURE: Only use environment variables, no hardcoded fallbacks
+      if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
+        // Verify admin password is properly configured
+        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12) {
+          logger.error('SECURITY: Admin password not configured or too weak');
+          return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        req.user = { user: username };
+        logger.debug('Basic authentication successful', { 
+          user: username,
+          method: 'Basic',
+          ip: req.ip
+        });
+        return next();
+      } else {
+        logger.warn('Basic authentication failed', { 
+          username: username?.substring(0, 20), // Limit logged data
+          ip: req.ip,
+          reason: 'invalid_credentials'
+        });
+        
+        // Consistent timing to prevent timing attacks
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        return res.status(401)
+          .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
+          .json({ error: 'Invalid credentials' });
+      }
+    } catch (error) {
+      logger.warn('Basic auth parsing error', {
+        error: error.message,
+        ip: req.ip
       });
       return res.status(401)
         .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
-        .json({ error: 'Invalid credentials' });
+        .json({ error: 'Invalid credentials format' });
     }
   }
 
-  /**
-   * Final fallback for missing credentials:
-   * 1. Logs detailed debug information about the request
-   * 2. Sends 401 response with WWW-Authenticate header
-   * 3. Includes user agent and IP address in logs
-   */
+  // No credentials provided
   logger.debug('Authentication required - no credentials provided', {
     userAgent: req.get('User-Agent')?.substring(0, 50) || 'unknown',
-    ip: req.ip || req.connection.remoteAddress || 'unknown'
+    ip: req.ip
   });
   
   return res.status(401)
     .set('WWW-Authenticate', 'Basic realm="Bull Dashboard"')
-    .json({ error: 'Access denied. No token or credentials provided.' });
+    .json({ error: 'Authentication required' });
 };

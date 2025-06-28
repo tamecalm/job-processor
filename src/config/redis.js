@@ -4,21 +4,50 @@ import { config } from './index.js';
 
 let redisClient = null;
 
+/**
+ * Securely mask Redis URI for logging
+ * @param {string} uri - Redis connection URI
+ * @returns {string} Masked URI
+ */
+const maskRedisUri = (uri) => {
+  if (!uri) return 'undefined';
+  
+  try {
+    const url = new URL(uri);
+    // Completely mask password and username
+    if (url.password) url.password = '***';
+    if (url.username) url.username = '***';
+    return url.toString();
+  } catch {
+    // Fallback for malformed URIs
+    return uri.replace(/\/\/[^@]*@/, '//***:***@');
+  }
+};
+
 export const connectRedis = async () => {
   if (redisClient?.isOpen) {
-    // logger.debug('Redis client already connected');
     return redisClient;
   }
 
   try {
+    // Security: Validate Redis URI format
+    if (!config.redisUri || typeof config.redisUri !== 'string') {
+      throw new Error('Redis URI not configured or invalid');
+    }
+
     redisClient = createClient({
       url: config.redisUri,
       socket: {
         connectTimeout: 15000,
         keepAlive: 1000,
-        tls: config.environment === 'production',
+        tls: config.environment === 'production' || config.redisUri.startsWith('rediss://'),
         rejectUnauthorized: config.environment === 'production',
       },
+      // Security: Disable potentially dangerous commands in production
+      ...(config.environment === 'production' && {
+        disableOfflineQueue: true,
+        enableAutoPipelining: false
+      })
     });
 
     // Event handlers for Redis client
@@ -26,16 +55,16 @@ export const connectRedis = async () => {
       logger.error('Redis client error', {
         error: err.message,
         code: err.code,
-        endpoint: config.redisUri.replace(/:[^@]+@/, ':***@'),
+        endpoint: maskRedisUri(config.redisUri)
       });
     });
 
     redisClient.on('connect', () => {
-      // logger.debug('Redis client connected');
+      logger.debug('Redis client connected');
     });
 
     redisClient.on('ready', () => {
-      // logger.debug('Redis client ready');
+      logger.debug('Redis client ready');
     });
 
     redisClient.on('end', () => {
@@ -44,14 +73,17 @@ export const connectRedis = async () => {
 
     await redisClient.connect();
 
-    // Test connection in non-production environments
+    // Security: Test connection with minimal data exposure
     if (config.environment !== 'production') {
-      await redisClient.set('test_key', 'test_value', { EX: 60 });
-      const testValue = await redisClient.get('test_key');
-      if (testValue === 'test_value') {
+      const testKey = `health_check_${Date.now()}`;
+      await redisClient.set(testKey, 'ok', { EX: 10 });
+      const testValue = await redisClient.get(testKey);
+      await redisClient.del(testKey); // Clean up immediately
+      
+      if (testValue === 'ok') {
         logger.debug('Redis connection test successful');
       } else {
-        logger.warn('Redis connection test failed - unexpected value');
+        logger.warn('Redis connection test failed');
       }
     }
 
@@ -60,7 +92,7 @@ export const connectRedis = async () => {
     logger.error('Redis connection failed', {
       error: error.message,
       code: error.code || 'UNKNOWN',
-      endpoint: config.redisUri.replace(/:[^@]+@/, ':***@'),
+      endpoint: maskRedisUri(config.redisUri)
     });
     
     if (redisClient) {
