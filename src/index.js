@@ -1,19 +1,20 @@
-import express from 'express';
-import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter.js';
-import { ExpressAdapter } from '@bull-board/express';
-import dotenv from 'dotenv';
-import cors from 'cors';
-import helmet from 'helmet';
-import jobRoutes from './api/routes/jobRoutes.js';
-import { connectRedis, getRedisClient } from './config/redis.js';
-import { connectDB } from './config/db.js';
-import { createJobQueue } from './jobs/queue.js';
-import { createEmailWorker } from './jobs/workers/emailWorker.js';
-import { authMiddleware } from './api/middlewares/auth.js';
-import { errorHandler } from './api/middlewares/errorHandler.js';
-import { createRateLimiter } from './api/middlewares/rateLimiter.js';
-import { logger } from './utils/logger.js';
+/* eslint-disable no-unused-vars */
+import express from 'express'; // Web framework for building APIs
+import { createBullBoard } from '@bull-board/api'; // Dashboard for monitoring job queues
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter.js'; // Adapter for BullMQ integration
+import { ExpressAdapter } from '@bull-board/express'; // Express adapter for Bull Board
+import dotenv from 'dotenv'; // Load environment variables from .env file
+import cors from 'cors'; // Enable Cross-Origin Resource Sharing
+import helmet from 'helmet'; // Security middleware for HTTP headers
+import jobRoutes from './api/routes/jobRoutes.js'; // API routes for job management
+import { connectRedis, getRedisClient } from './config/redis.js'; // Redis connection utilities
+import { connectDB } from './config/db.js'; // MongoDB connection utility
+import { createJobQueue } from './jobs/queue.js'; // Job queue initialization
+import { createEmailWorker } from './jobs/workers/emailWorker.js'; // Email processing worker
+import { authMiddleware } from './api/middlewares/auth.js'; // Authentication middleware
+import { errorHandler } from './api/middlewares/errorHandler.js'; // Global error handler
+import { createRateLimiter } from './api/middlewares/rateLimiter.js'; // Rate limiting middleware
+import { logger } from './utils/logger.js'; // Logging utility
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use(express.json());
 
 // Timeout wrappers for debugging long hangs
 const withTimeout = (promise, timeout, label) => {
+  // Utility to add timeout to promises for debugging long-running operations
   return Promise.race([
     promise,
     new Promise((_, reject) =>
@@ -36,11 +38,13 @@ const withTimeout = (promise, timeout, label) => {
 
 async function startServer() {
   try {
+    // Initialize server - connect to Redis, MongoDB, setup queues, and start the server
     logger.start('Starting Redis connection...');
     let redisConnected = false;
     let jobQueue = null;
     
     try {
+      // Attempt to connect to Redis with a timeout
       await withTimeout(connectRedis(), 15000, 'Redis connection');
       redisConnected = true;
       logger.success('Redis connected successfully');
@@ -50,6 +54,7 @@ async function startServer() {
 
     logger.start('Connecting to MongoDB...');
     try {
+      // Connect to MongoDB with a timeout
       await withTimeout(connectDB(), 10000, 'MongoDB connection');
       logger.success('MongoDB connected successfully');
     } catch (mongoError) {
@@ -58,8 +63,8 @@ async function startServer() {
     }
 
     logger.start('Initializing rate limiter...');
-     // If you're testing locally, consider temporarily disabling rate limiting in development environments.
-    // eslint-disable-next-line no-unused-vars
+    // Rate limiter configuration (60 requests per minute)
+    // Disabled by default - uncomment app.use line to enable
     const rateLimiter = createRateLimiter({ points: 60, duration: 60 });
     // app.use('/api/jobs', rateLimiter);
     logger.success('Rate limiter initialized');
@@ -67,12 +72,12 @@ async function startServer() {
     if (redisConnected) {
       logger.start('Initializing job queue and worker...');
       try {
-        // Initialize job queue
+        // Initialize job queue and email worker
         jobQueue = createJobQueue();
         if (jobQueue) {
           logger.success('Job queue initialized');
           
-          // Initialize worker
+          // Initialize email processing worker
           const worker = createEmailWorker();
           if (worker) {
             logger.success('Email worker initialized');
@@ -94,6 +99,7 @@ async function startServer() {
     if (redisConnected && jobQueue) {
       logger.start('Setting up Bull Board dashboard...');
       try {
+        // Initialize Bull Board dashboard for monitoring job queues
         const serverAdapter = new ExpressAdapter();
         serverAdapter.setBasePath('/dashboard');
         createBullBoard({
@@ -110,11 +116,12 @@ async function startServer() {
     }
 
     logger.start('Registering API routes...');
+    // Register API routes and global error handler
     app.use('/api', jobRoutes);
     app.use(errorHandler);
     logger.success('API routes configured');
 
-    // Health check endpoint
+    // Health check endpoint - provides server status metrics
     app.get('/health', (req, res) => {
       const memoryUsage = process.memoryUsage();
       const uptime = process.uptime();
@@ -131,7 +138,7 @@ async function startServer() {
       });
     });
 
-    // Serve static files for dashboard
+    // Serve static files for the dashboard UI
     app.use(express.static('src/dashboard/public'));
 
     const PORT = process.env.PORT || 3000;
@@ -148,7 +155,7 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
+// Graceful shutdown handlers for termination signals
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully...');
   process.exit(0);
@@ -160,14 +167,16 @@ process.on('SIGTERM', async () => {
 });
 
 process.on('unhandledRejection', (reason, _promise) => {
-  logger.error('Unhandled Promise Rejection', { 
+  // Handle unhandled promise rejections
+  logger.error('Unhandled Promise Rejection', {
     error: reason?.message || reason,
     location: 'unhandledRejection'
   });
 });
 
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception', { 
+  // Handle uncaught exceptions
+  logger.error('Uncaught Exception', {
     error: error.message,
     location: 'uncaughtException'
   });
