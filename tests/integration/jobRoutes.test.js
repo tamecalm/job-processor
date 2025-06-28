@@ -1,22 +1,25 @@
-import request from 'supertest';
-import jwt from 'jsonwebtoken';
-import { app } from '../../src/index.js';
-import Job from '../../src/models/job.model.js';
-import { config } from '../../src/config/index.js';
+import request from 'supertest'; 
+import jwt from 'jsonwebtoken'; 
+import { app } from '../../src/index.js'; 
+import Job from '../../src/models/job.model.js'; 
+import { config } from '../../src/config/index.js'; 
 
 // Mock dependencies to avoid actual connections during tests
 jest.mock('../../src/config/redis.js', () => ({
+  // Mock Redis connection to avoid real database interactions during tests
   connectRedis: jest.fn().mockResolvedValue({}),
   getRedisClient: jest.fn().mockReturnValue({ isOpen: true }),
   disconnectRedis: jest.fn().mockResolvedValue(),
 }));
 
 jest.mock('../../src/config/db.js', () => ({
+  // Mock MongoDB connection to prevent real database operations in tests
   connectDB: jest.fn().mockResolvedValue({}),
   disconnectDB: jest.fn().mockResolvedValue(),
 }));
 
 jest.mock('../../src/jobs/queue.js', () => ({
+  // Mock job queue implementation to simulate queue operations without real processing
   createJobQueue: jest.fn().mockReturnValue({
     add: jest.fn().mockResolvedValue({ id: 'test-queue-job-id' }),
     getJob: jest.fn(),
@@ -30,26 +33,32 @@ jest.mock('../../src/jobs/queue.js', () => ({
 }));
 
 jest.mock('../../src/jobs/workers/emailWorker.js', () => ({
+  // Mock email worker to prevent actual email processing during tests
   createEmailWorker: jest.fn().mockReturnValue({}),
 }));
 
-jest.mock('../../src/models/job.model.js');
+jest.mock('../../src/models/job.model.js'); // Mock job model to simulate database operations
 
 describe('Job Routes Integration Tests', () => {
-  let authToken;
-  let testJobId;
+  // Setup test environment
+  let authToken; // JWT token for authenticated requests
+  let testJobId; // Test job ID for route parameters
 
   beforeAll(() => {
-    // Create test JWT token
+    // Initialize test environment
+    // Create test JWT token for authenticated requests
     authToken = jwt.sign({ user: 'test-user' }, config.jwtSecret, { expiresIn: '1h' });
-    testJobId = '507f1f77bcf86cd799439011'; // Valid ObjectId
+    // Use a valid MongoDB ObjectId for testing
+    testJobId = '507f1f77bcf86cd799439011';
   });
 
   beforeEach(() => {
+    // Reset all mocks before each test
     jest.clearAllMocks();
   });
 
   describe('POST /api/login', () => {
+    // Test authentication endpoint
     it('should login with valid credentials', async () => {
       const response = await request(app)
         .post('/api/login')
@@ -64,6 +73,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject invalid credentials', async () => {
+      // Test authentication failure with incorrect password
       const response = await request(app)
         .post('/api/login')
         .send({
@@ -76,6 +86,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject missing credentials', async () => {
+      // Test authentication failure with empty request body
       const response = await request(app)
         .post('/api/login')
         .send({});
@@ -85,8 +96,9 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('POST /api/jobs', () => {
+    // Test job creation endpoint
     it('should create a job with valid data and auth', async () => {
-      const jobData = global.testHelpers.createTestJobData();
+      const jobData = global.testHelpers.createTestJobData(); // Generate test job data
       const mockJob = {
         _id: testJobId,
         ...jobData,
@@ -108,6 +120,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject job creation without auth', async () => {
+      // Test job creation failure without authentication
       const jobData = global.testHelpers.createTestJobData();
 
       const response = await request(app)
@@ -119,6 +132,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject invalid job data', async () => {
+      // Test job creation failure with invalid data format
       const invalidJobData = {
         name: '', // Invalid: empty name
         data: {} // Invalid: missing required fields
@@ -134,6 +148,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject job with invalid email format', async () => {
+      // Test job creation failure with invalid email format
       const invalidJobData = global.testHelpers.createTestJobData({
         data: {
           recipient: 'invalid-email',
@@ -152,6 +167,7 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('GET /api/jobs', () => {
+    // Test job listing endpoint
     it('should retrieve jobs with valid auth', async () => {
       const mockJobs = [
         {
@@ -176,6 +192,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject without auth', async () => {
+      // Test job listing failure without authentication
       const response = await request(app)
         .get('/api/jobs');
 
@@ -184,6 +201,7 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('GET /api/jobs/:id', () => {
+    // Test job detail endpoint
     it('should retrieve specific job', async () => {
       const mockJob = {
         _id: testJobId,
@@ -203,6 +221,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should return 404 for non-existent job', async () => {
+      // Test job detail failure for non-existent job
       Job.findById.mockResolvedValue(null);
 
       const response = await request(app)
@@ -215,6 +234,7 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('DELETE /api/jobs/:id', () => {
+    // Test job deletion endpoint
     it('should delete job successfully', async () => {
       const mockJob = {
         _id: testJobId,
@@ -235,6 +255,7 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('POST /api/jobs/:id/retry', () => {
+    // Test job retry endpoint
     it('should retry failed job', async () => {
       const mockJob = {
         _id: testJobId,
@@ -255,6 +276,7 @@ describe('Job Routes Integration Tests', () => {
     });
 
     it('should reject retry of non-failed job', async () => {
+      // Test retry failure for non-failed job
       const mockJob = {
         _id: testJobId,
         name: 'sendEmail',
@@ -272,6 +294,7 @@ describe('Job Routes Integration Tests', () => {
   });
 
   describe('GET /health', () => {
+    // Test health check endpoint
     it('should return health status without auth', async () => {
       const response = await request(app)
         .get('/health');
