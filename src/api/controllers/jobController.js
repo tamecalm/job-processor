@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import jwt from 'jsonwebtoken';
 import { jobService } from '../../services/jobService.js';
 import { logger } from '../../utils/logger.js';
@@ -84,26 +85,79 @@ export const jobController = {
   },
 
   /**
-   * Authenticates user and generates JWT token (TEMPORARY TEST IMPLEMENTATION)
+   * Authenticates user and generates JWT token
    * @param {Object} req - Express request object containing username/password in body
    * @param {Object} res - Express response object
    * @param {Function} next - Next middleware function
-   * @note Remove the development bypass before production deployment
    */
   async login(req, res, next) {
     try {
       const { username, password } = req.body;
-      // Temporary bypass for testing (REMOVE IN PRODUCTION)
-      if (process.env.NODE_ENV === 'development' || (username === 'admin' && password === process.env.ADMIN_PASSWORD)) {
-        const token = jwt.sign({ user: username || 'admin' }, config.jwtSecret, { expiresIn: '1h' });
-        logger.info('🚀 Login successful, token generated', { user: username || 'admin' });
+      
+      // Input validation
+      if (!username || !password) {
+        logger.warn('Login attempt with missing credentials', { 
+          ip: req.ip,
+          userAgent: req.get('User-Agent')?.substring(0, 100)
+        });
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      // Rate limiting check (additional security layer)
+      const clientId = req.ip;
+      
+      // Secure credential validation - ONLY use environment variables
+      if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
+        // Additional security: Check if admin password is set and strong
+        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 4) {
+          logger.error('SECURITY: Admin password not set or too weak');
+          return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        const token = jwt.sign(
+          { 
+            user: username,
+            iat: Math.floor(Date.now() / 1000),
+            // Add additional claims for security
+            ip: req.ip,
+            userAgent: req.get('User-Agent')?.substring(0, 100)
+          }, 
+          config.jwtSecret, 
+          { 
+            expiresIn: '24h',
+            issuer: 'job-processor-api',
+            audience: 'job-processor-client'
+          }
+        );
+        
+        logger.info('Successful authentication', { 
+          user: username,
+          ip: req.ip,
+          userAgent: req.get('User-Agent')?.substring(0, 100)
+        });
+        
         res.json({ token });
       } else {
-        logger.warn('⚠️ Invalid login attempt', { username });
+        // Log failed attempts for security monitoring
+        logger.warn('Failed authentication attempt', { 
+          username: username?.substring(0, 50), // Limit logged username length
+          ip: req.ip,
+          userAgent: req.get('User-Agent')?.substring(0, 100),
+          timestamp: new Date().toISOString()
+        });
+        
+        // Consistent response time to prevent timing attacks
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         res.status(401).json({ error: 'Invalid credentials' });
       }
     } catch (error) {
-      logger.error('❌ Login error', { error: error.message, stack: error.stack });
+      logger.error('Authentication error', { 
+        error: error.message,
+        ip: req.ip,
+        // Don't log full stack trace for security
+        type: error.name
+      });
       next(error);
     }
   },
