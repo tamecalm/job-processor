@@ -65,7 +65,7 @@ export const authMiddleware = async (req, res, next) => {
       // SECURE: Only use environment variables, no hardcoded fallbacks
       if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
         // Verify admin password is properly configured
-        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 4) {
+        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 5) {
           logger.error('SECURITY: Admin password not configured or too weak');
           return res.status(500).json({ error: 'Server configuration error' });
         }

@@ -110,7 +110,7 @@ export const jobController = {
       // Secure credential validation - ONLY use environment variables
       if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
         // Additional security: Check if admin password is set and strong
-        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 4) {
+        if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 5) {
           logger.error('SECURITY: Admin password not set or too weak');
           return res.status(500).json({ error: 'Server configuration error' });
         }
